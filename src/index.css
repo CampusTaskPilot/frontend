@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    @apply min-h-screen bg-campus-50 text-campus-900 antialiased;
+    background-image: radial-gradient(circle at top, rgba(77, 125, 255, 0.18), transparent 48%),
+      radial-gradient(circle at 88% 8%, rgba(33, 199, 168, 0.16), transparent 36%),
+      linear-gradient(180deg, #f7faff 0%, #eef3fb 45%, #f7faff 100%);
+    font-family: 'Noto Sans KR', sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: 'Montserrat', 'Noto Sans KR', sans-serif;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
