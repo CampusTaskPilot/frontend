@@ -11,6 +11,7 @@ import type {
   TeamMemberRole,
   TeamMemberWithProfile,
   TeamRecord,
+  TeamSkillTag,
 } from '../types/team'
 
 function toTeamRecord(value: unknown): TeamRecord {
@@ -19,12 +20,13 @@ function toTeamRecord(value: unknown): TeamRecord {
   return {
     id: String(row.id ?? ''),
     name: String(row.name ?? ''),
-    summary: typeof row.summary === 'string' ? row.summary : null,
+    summary: String(row.summary ?? ''),
     description: typeof row.description === 'string' ? row.description : null,
-    max_members: typeof row.max_members === 'number' ? row.max_members : null,
+    max_members: typeof row.max_members === 'number' ? row.max_members : 0,
     category: typeof row.category === 'string' ? row.category : null,
-    is_recruiting: typeof row.is_recruiting === 'boolean' ? row.is_recruiting : null,
-    created_at: typeof row.created_at === 'string' ? row.created_at : null,
+    is_recruiting: typeof row.is_recruiting === 'boolean' ? row.is_recruiting : false,
+    created_at: typeof row.created_at === 'string' ? row.created_at : '',
+    leader_id: String(row.leader_id ?? ''),
   }
 }
 
@@ -32,10 +34,12 @@ function toTeamMemberRecord(value: unknown): TeamMemberRecord {
   const row = value as Record<string, unknown>
 
   return {
+    id: String(row.id ?? ''),
     team_id: String(row.team_id ?? ''),
     user_id: String(row.user_id ?? ''),
     role: String(row.role ?? 'member'),
-    joined_at: typeof row.joined_at === 'string' ? row.joined_at : null,
+    status: String(row.status ?? ''),
+    joined_at: typeof row.joined_at === 'string' ? row.joined_at : '',
   }
 }
 
@@ -67,6 +71,24 @@ function uniqueNumbers(values: number[]) {
   )
 }
 
+function toTeamSkillTag(value: unknown): TeamSkillTag {
+  const row = value as Record<string, unknown>
+  return {
+    id: Number(row.id ?? 0),
+    name: String(row.name ?? ''),
+  }
+}
+
+function uniqueSkillIds(values: number[]) {
+  return Array.from(
+    new Set(
+      values.filter(
+        (value) => Number.isFinite(value) && value > 0,
+      ),
+    ),
+  )
+}
+
 function displayRole(role: TeamMemberRole) {
   return role
 }
@@ -89,12 +111,12 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
   const [teamResult, membersResult] = await Promise.all([
     supabase
       .from('teams')
-      .select('id,name,summary,description,max_members,category,is_recruiting,created_at')
+      .select('id,leader_id,name,summary,description,category,max_members,is_recruiting,created_at')
       .eq('id', teamId)
       .maybeSingle(),
     supabase
       .from('team_members')
-      .select('team_id,user_id,role,joined_at')
+      .select('id,team_id,user_id,role,status,joined_at')
       .eq('team_id', teamId),
   ])
 
@@ -108,17 +130,15 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
 
   const team = teamResult.data ? toTeamRecord(teamResult.data) : null
   const members = ((membersResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
-
-  const leaderMember = members.find((member) => member.role === 'leader') ?? null
   const currentUserRole = userId ? members.find((member) => member.user_id === userId)?.role ?? null : null
 
   let leader: ProfileSummary | null = null
 
-  if (leaderMember?.user_id) {
+  if (team?.leader_id) {
     const leaderProfileResult = await supabase
       .from('profiles')
       .select('id,full_name,email,profile_image_url')
-      .eq('id', leaderMember.user_id)
+      .eq('id', team.leader_id)
       .maybeSingle()
 
     if (leaderProfileResult.error) {
@@ -140,7 +160,7 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
 export async function fetchTeamMembers(teamId: string) {
   const membersResult = await supabase
     .from('team_members')
-    .select('team_id,user_id,role,joined_at')
+    .select('id,team_id,user_id,role,status,joined_at')
     .eq('team_id', teamId)
 
   if (membersResult.error) {
@@ -185,7 +205,7 @@ export async function fetchTeamSkills(teamId: string) {
     throw teamSkillsResult.error
   }
 
-  const skillIds = uniqueNumbers(
+  const skillIds = uniqueSkillIds(
     ((teamSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((item) =>
       Number(item.skill_id ?? 0),
     ),
@@ -206,6 +226,32 @@ export async function fetchTeamSkills(teamId: string) {
   }
 
   return ((skillsResult.data ?? []) as unknown[]).map(toSkillOption)
+}
+
+export async function fetchTeamSkillTags(teamId: string): Promise<TeamSkillTag[]> {
+  const teamSkillsResult = await supabase.from('team_skills').select('skill_id').eq('team_id', teamId)
+
+  if (teamSkillsResult.error) {
+    throw teamSkillsResult.error
+  }
+
+  const skillIds = uniqueSkillIds(
+    ((teamSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((item) =>
+      Number(item.skill_id ?? 0),
+    ),
+  )
+
+  if (skillIds.length === 0) {
+    return []
+  }
+
+  const skillsResult = await supabase.from('skills').select('id,name').in('id', skillIds).order('name')
+
+  if (skillsResult.error) {
+    throw skillsResult.error
+  }
+
+  return ((skillsResult.data ?? []) as unknown[]).map(toTeamSkillTag)
 }
 
 export async function createTeamWithRelations(params: {
@@ -234,7 +280,7 @@ export async function createTeamWithRelations(params: {
   const teamPayload = {
   leader_id: userId,
   name: name.trim(),
-  summary: summary.trim() || null,
+  summary: summary.trim(),
   description: description.trim() || null,
   max_members: maxMembers,
   category: category.trim() || null,
@@ -295,12 +341,12 @@ export async function fetchTeamDetail(teamId: string, userId: string | null): Pr
   const [teamResult, membersResult, teamSkillsResult] = await Promise.all([
     supabase
       .from('teams')
-      .select('id,name,summary,description,max_members,category,is_recruiting,created_at')
+      .select('id,leader_id,name,summary,description,max_members,category,is_recruiting,created_at')
       .eq('id', teamId)
       .maybeSingle(),
     supabase
       .from('team_members')
-      .select('team_id,user_id,role,joined_at')
+      .select('id,team_id,user_id,role,status,joined_at')
       .eq('team_id', teamId),
     supabase.from('team_skills').select('team_id,skill_id').eq('team_id', teamId),
   ])
@@ -376,9 +422,9 @@ export async function fetchTeamList(userId: string | null) {
   const [teamsResult, teamMembersResult] = await Promise.all([
     supabase
       .from('teams')
-      .select('id,name,summary,description,max_members,category,is_recruiting,created_at')
+      .select('id,leader_id,name,summary,description,max_members,category,is_recruiting,created_at')
       .order('created_at', { ascending: false }),
-    supabase.from('team_members').select('team_id,user_id,role'),
+    supabase.from('team_members').select('id,team_id,user_id,role,status,joined_at'),
   ])
 
   if (teamsResult.error) {
@@ -393,22 +439,17 @@ export async function fetchTeamList(userId: string | null) {
   const allMembers = ((teamMembersResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
 
   const memberCountByTeamId = new Map<string, number>()
-  const leaderIdsByTeamId = new Map<string, string>()
   const userRoleByTeamId = new Map<string, TeamMemberRole>()
 
   allMembers.forEach((member) => {
     memberCountByTeamId.set(member.team_id, (memberCountByTeamId.get(member.team_id) ?? 0) + 1)
-
-    if (member.role === 'leader' && !leaderIdsByTeamId.has(member.team_id)) {
-      leaderIdsByTeamId.set(member.team_id, member.user_id)
-    }
 
     if (userId && member.user_id === userId) {
       userRoleByTeamId.set(member.team_id, member.role)
     }
   })
 
-  const leaderIds = Array.from(new Set(Array.from(leaderIdsByTeamId.values())))
+  const leaderIds = Array.from(new Set(teams.map((team) => team.leader_id).filter(Boolean)))
   const profilesResult =
     leaderIds.length > 0
       ? await supabase.from('profiles').select('id,full_name,email').in('id', leaderIds)
@@ -430,7 +471,7 @@ export async function fetchTeamList(userId: string | null) {
   )
 
   const result: TeamListItem[] = teams.map((team) => {
-    const leaderId = leaderIdsByTeamId.get(team.id)
+    const leaderId = team.leader_id
     return {
       ...team,
       current_members: memberCountByTeamId.get(team.id) ?? 0,
@@ -449,7 +490,7 @@ export async function joinTeam(teamId: string, userId: string) {
       .select('id,max_members,is_recruiting')
       .eq('id', teamId)
       .maybeSingle(),
-    supabase.from('team_members').select('team_id,user_id,role').eq('team_id', teamId),
+    supabase.from('team_members').select('id,team_id,user_id,role,status,joined_at').eq('team_id', teamId),
   ])
 
   if (teamResult.error) {
@@ -497,7 +538,7 @@ export async function joinTeam(teamId: string, userId: string) {
 export async function fetchSidebarTeams(userId: string): Promise<SidebarTeams> {
   const membershipsResult = await supabase
     .from('team_members')
-    .select('team_id,user_id,role')
+    .select('id,team_id,user_id,role,status,joined_at')
     .eq('user_id', userId)
 
   if (membershipsResult.error) {

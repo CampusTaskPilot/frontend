@@ -58,6 +58,7 @@ export function ProfileViewPage() {
       setErrorMessage('잘못된 프로필 경로입니다.')
       return
     }
+    const currentUserId = userId
 
     let isMounted = true
 
@@ -66,7 +67,7 @@ export function ProfileViewPage() {
       setErrorMessage('')
 
       try {
-        const result = await fetchProfilePageData(userId)
+        const result = await fetchProfilePageData(currentUserId)
 
         if (!isMounted) {
           return

@@ -134,6 +134,8 @@ export function ProfileEditPage() {
       setIsLoading(false)
       return
     }
+    const currentUser = user
+    const currentUserId = userId
 
     let isMounted = true
 
@@ -142,7 +144,7 @@ export function ProfileEditPage() {
       setErrorMessage('')
 
       try {
-        const { profile, skills, profileSkills } = await fetchProfilePageData(userId)
+        const { profile, skills, profileSkills } = await fetchProfilePageData(currentUserId)
 
         if (!isMounted) {
           return
@@ -163,9 +165,11 @@ export function ProfileEditPage() {
 
             const initialForm = buildEditableProfileForm({
               profile,
-              fallbackEmail: user.email ?? '',
+              fallbackEmail: currentUser.email ?? '',
               fallbackFullName:
-                typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : '',
+                typeof currentUser.user_metadata?.full_name === 'string'
+                  ? currentUser.user_metadata.full_name
+                  : '',
             })
 
             setForm(initialForm)

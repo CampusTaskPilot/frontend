@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -13,10 +13,14 @@ import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
 import { getMockCalendar, getMockTasks } from '../features/teams/data/mockWorkspace'
 import {
   fetchTeamMembers,
-  fetchTeamSkills,
+  fetchTeamSkillTags,
   fetchTeamWorkspaceBase,
 } from '../features/teams/lib/teams'
-import type { SkillOption, TeamMemberWithProfile, TeamWorkspaceBase } from '../features/teams/types/team'
+import type {
+  TeamMemberWithProfile,
+  TeamSkillTag,
+  TeamWorkspaceBase,
+} from '../features/teams/types/team'
 
 export function TeamWorkspacePage() {
   const { teamId } = useParams<{ teamId: string }>()
@@ -25,7 +29,7 @@ export function TeamWorkspacePage() {
   const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>('overview')
   const [baseData, setBaseData] = useState<TeamWorkspaceBase | null>(null)
   const [members, setMembers] = useState<TeamMemberWithProfile[]>([])
-  const [skills, setSkills] = useState<SkillOption[]>([])
+  const [skills, setSkills] = useState<TeamSkillTag[]>([])
   const [isBaseLoading, setIsBaseLoading] = useState(true)
   const [isTabLoading, setIsTabLoading] = useState(false)
   const [baseError, setBaseError] = useState('')
@@ -39,6 +43,7 @@ export function TeamWorkspacePage() {
       setIsBaseLoading(false)
       return
     }
+    const currentTeamId = teamId
 
     let isMounted = true
 
@@ -51,12 +56,25 @@ export function TeamWorkspacePage() {
       setSkillsLoaded(false)
 
       try {
-        const result = await fetchTeamWorkspaceBase(teamId, user?.id ?? null)
+        const result = await fetchTeamWorkspaceBase(currentTeamId, user?.id ?? null)
         if (!isMounted) return
         setBaseData(result)
-      } catch (error) {
+      } catch (error: unknown) {
         if (!isMounted) return
-        setBaseError(error instanceof Error ? error.message : '팀 정보를 불러오지 못했습니다.')
+      
+        let detail = ''
+      
+        if (error instanceof Error) {
+          detail = error.message
+        } else if (typeof error === 'object' && error !== null && 'message' in error) {
+          detail = String((error as any).message)
+        }
+      
+        setBaseError(
+          detail
+            ? `팀 정보를 불러오지 못했습니다. (${detail})`
+            : '팀 정보를 불러오지 못했습니다.'
+        )
       } finally {
         if (isMounted) {
           setIsBaseLoading(false)
@@ -73,6 +91,7 @@ export function TeamWorkspacePage() {
 
   useEffect(() => {
     if (!teamId || !baseData?.team) return
+    const currentTeamId = teamId
 
     let isMounted = true
 
@@ -85,7 +104,7 @@ export function TeamWorkspacePage() {
 
           if (!membersLoaded) {
             jobs.push(
-              fetchTeamMembers(teamId).then((data) => {
+              fetchTeamMembers(currentTeamId).then((data) => {
                 if (!isMounted) return
                 setMembers(data)
                 setMembersLoaded(true)
@@ -95,7 +114,7 @@ export function TeamWorkspacePage() {
 
           if (!skillsLoaded) {
             jobs.push(
-              fetchTeamSkills(teamId).then((data) => {
+              fetchTeamSkillTags(currentTeamId).then((data) => {
                 if (!isMounted) return
                 setSkills(data)
                 setSkillsLoaded(true)
@@ -113,7 +132,7 @@ export function TeamWorkspacePage() {
 
         if (activeTab === 'members' && !membersLoaded) {
           setIsTabLoading(true)
-          const data = await fetchTeamMembers(teamId)
+          const data = await fetchTeamMembers(currentTeamId)
           if (!isMounted) return
           setMembers(data)
           setMembersLoaded(true)
@@ -138,7 +157,7 @@ export function TeamWorkspacePage() {
   const tasks = useMemo(() => (teamId ? getMockTasks(teamId) : []), [teamId])
   const schedules = useMemo(() => (teamId ? getMockCalendar(teamId) : []), [teamId])
 
-  const isLeader = baseData?.current_user_role === 'leader'
+  const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
   const leaderName =
     baseData?.leader?.full_name || baseData?.leader?.email || baseData?.leader?.id || '미지정'
 
@@ -193,13 +212,13 @@ export function TeamWorkspacePage() {
         </Card>
 
         <div className="space-y-4">
-          {tabError && (
+          {tabError && activeTab !== 'overview' && (
             <Card className="border-rose-200 bg-rose-50">
               <p className="text-sm text-rose-600">{tabError}</p>
             </Card>
           )}
 
-          {!tabError && isTabLoading ? (
+          {activeTab !== 'overview' && !tabError && isTabLoading ? (
             <Card>
               <p className="text-sm text-campus-600">탭 데이터를 불러오는 중입니다...</p>
             </Card>
@@ -208,10 +227,13 @@ export function TeamWorkspacePage() {
               {activeTab === 'overview' && (
                 <TeamOverviewTab
                   team={baseData.team}
-                  leaderName={leaderName}
                   members={members}
                   skills={skills}
                   tasks={tasks}
+                  isLoading={isTabLoading}
+                  errorMessage={tabError}
+                  isLeader={isLeader}
+                  onOpenMembers={() => setActiveTab('members')}
                 />
               )}
               {activeTab === 'members' && <TeamMembersTab members={members} isLeader={isLeader} />}

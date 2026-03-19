@@ -67,6 +67,7 @@ export function AppSidebar() {
       setJoinedTeams([])
       return
     }
+    const currentUserId = user.id
 
     let isMounted = true
 
@@ -74,7 +75,7 @@ export function AppSidebar() {
       setIsLoadingTeams(true)
 
       try {
-        const result = await fetchSidebarTeams(user.id)
+        const result = await fetchSidebarTeams(currentUserId)
         if (!isMounted) return
         setManagedTeams(result.managedTeams)
         setJoinedTeams(result.joinedTeams)

@@ -6,22 +6,30 @@ export interface SkillOption {
   category: string | null
 }
 
+export interface TeamSkillTag {
+  id: number
+  name: string
+}
+
 export interface TeamRecord {
   id: string
   name: string
-  summary: string | null
+  summary: string
   description: string | null
-  max_members: number | null
+  max_members: number
   category: string | null
-  is_recruiting: boolean | null
-  created_at: string | null
+  is_recruiting: boolean
+  created_at: string
+  leader_id: string
 }
 
 export interface TeamMemberRecord {
+  id: string
   team_id: string
   user_id: string
   role: TeamMemberRole
-  joined_at: string | null
+  status: string
+  joined_at: string
 }
 
 export interface ProfileSummary {
