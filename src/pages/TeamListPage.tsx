@@ -56,6 +56,7 @@ export function TeamListPage() {
       const refreshed = await fetchTeamList(user.id)
       setTeams(refreshed)
     } catch (error) {
+      console.error('join team error:', error)
       setErrorMessage(error instanceof Error ? error.message : '팀 참여에 실패했습니다.')
     } finally {
       setJoiningTeamId(null)

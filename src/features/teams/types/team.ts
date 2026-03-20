@@ -62,7 +62,8 @@ export interface TeamWorkspaceBase {
   leader: ProfileSummary | null
 }
 
-export type TeamTaskStatus = 'todo' | 'doing' | 'done'
+export type TeamTaskStatus = 'todo' | 'in_progress' | 'done'
+export type TeamTaskPriority = 'low' | 'medium' | 'high'
 
 export interface TeamTaskItem {
   id: string
@@ -71,10 +72,78 @@ export interface TeamTaskItem {
   status: TeamTaskStatus
 }
 
-export interface TeamCalendarItem {
+export interface TeamTodoRecord {
   id: string
-  date: string
+  task_id: string
+  content: string
+  is_done: boolean
+  position: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamTaskRecord {
+  id: string
+  team_id: string
   title: string
+  description: string | null
+  status: TeamTaskStatus
+  priority: TeamTaskPriority
+  assignee_id: string | null
+  created_by: string
+  due_date: string | null
+  completed_at: string | null
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamTaskWithTodos extends TeamTaskRecord {
+  assignee: ProfileSummary | null
+  todos: TeamTodoRecord[]
+}
+
+export type TeamCalendarEventType = 'general' | 'meeting' | 'deadline' | 'presentation'
+
+export interface TeamCalendarEventRecord {
+  id: string
+  team_id: string
+  title: string
+  description: string | null
+  type: TeamCalendarEventType
+  event_date: string
+  start_time: string | null
+  end_time: string | null
+  is_all_day: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamCalendarEventGroup {
+  date: string
+  events: TeamCalendarEventRecord[]
+}
+
+export interface TeamCalendarEventFormValues {
+  title: string
+  description: string
+  type: TeamCalendarEventType
+  event_date: string
+  is_all_day: boolean
+  start_time: string
+  end_time: string
+}
+
+export interface TeamCalendarEventUpsertInput {
+  title: string
+  description: string | null
+  type: TeamCalendarEventType
+  event_date: string
+  is_all_day: boolean
+  start_time: string | null
+  end_time: string | null
 }
 
 export interface SidebarTeamItem {

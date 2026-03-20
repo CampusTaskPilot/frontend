@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../features/auth/context/AuthContext'
@@ -10,7 +10,6 @@ import { TeamOverviewTab } from '../features/teams/components/TeamOverviewTab'
 import { TeamPMTab } from '../features/teams/components/TeamPMTab'
 import { TeamTabs, type TeamWorkspaceTabKey } from '../features/teams/components/TeamTabs'
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
-import { getMockCalendar, getMockTasks } from '../features/teams/data/mockWorkspace'
 import {
   fetchTeamMembers,
   fetchTeamSkillTags,
@@ -18,15 +17,27 @@ import {
 } from '../features/teams/lib/teams'
 import type {
   TeamMemberWithProfile,
+  TeamMemberRole,
   TeamSkillTag,
+  TeamTaskItem,
   TeamWorkspaceBase,
 } from '../features/teams/types/team'
 
 export function TeamWorkspacePage() {
   const { teamId } = useParams<{ teamId: string }>()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
 
-  const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>('overview')
+  const requestedTab = searchParams.get('tab')
+  const initialTab: TeamWorkspaceTabKey =
+    requestedTab === 'members' ||
+    requestedTab === 'tasks' ||
+    requestedTab === 'calendar' ||
+    requestedTab === 'pm'
+      ? requestedTab
+      : 'overview'
+
+  const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>(initialTab)
   const [baseData, setBaseData] = useState<TeamWorkspaceBase | null>(null)
   const [members, setMembers] = useState<TeamMemberWithProfile[]>([])
   const [skills, setSkills] = useState<TeamSkillTag[]>([])
@@ -36,6 +47,10 @@ export function TeamWorkspacePage() {
   const [tabError, setTabError] = useState('')
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [skillsLoaded, setSkillsLoaded] = useState(false)
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
 
   useEffect(() => {
     if (!teamId) {
@@ -67,7 +82,7 @@ export function TeamWorkspacePage() {
         if (error instanceof Error) {
           detail = error.message
         } else if (typeof error === 'object' && error !== null && 'message' in error) {
-          detail = String((error as any).message)
+          detail = String((error as { message?: unknown }).message ?? '')
         }
       
         setBaseError(
@@ -130,7 +145,7 @@ export function TeamWorkspacePage() {
           return
         }
 
-        if (activeTab === 'members' && !membersLoaded) {
+        if ((activeTab === 'members' || activeTab === 'tasks') && !membersLoaded) {
           setIsTabLoading(true)
           const data = await fetchTeamMembers(currentTeamId)
           if (!isMounted) return
@@ -154,8 +169,7 @@ export function TeamWorkspacePage() {
     }
   }, [activeTab, baseData?.team, membersLoaded, skillsLoaded, teamId])
 
-  const tasks = useMemo(() => (teamId ? getMockTasks(teamId) : []), [teamId])
-  const schedules = useMemo(() => (teamId ? getMockCalendar(teamId) : []), [teamId])
+  const tasks = useMemo<TeamTaskItem[]>(() => [], [])
 
   const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
   const leaderName =
@@ -237,8 +251,21 @@ export function TeamWorkspacePage() {
                 />
               )}
               {activeTab === 'members' && <TeamMembersTab members={members} isLeader={isLeader} />}
-              {activeTab === 'tasks' && <TeamTasksTab tasks={tasks} />}
-              {activeTab === 'calendar' && <TeamCalendarTab schedules={schedules} />}
+              {activeTab === 'tasks' && teamId && (
+                <TeamTasksTab
+                  teamId={teamId}
+                  currentUserId={user?.id ?? null}
+                  currentUserRole={(baseData?.current_user_role ?? null) as TeamMemberRole | null}
+                  members={members}
+                />
+              )}
+              {activeTab === 'calendar' && teamId && (
+                <TeamCalendarTab
+                  teamId={teamId}
+                  currentUserId={user?.id ?? null}
+                  isLeader={Boolean(isLeader)}
+                />
+              )}
               {activeTab === 'pm' && <TeamPMTab />}
             </>
           )}
