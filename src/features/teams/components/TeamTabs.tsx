@@ -26,8 +26,8 @@ export function TeamTabs({ activeTab, onChange }: TeamTabsProps) {
             className={[
               'flex w-full items-center rounded-2xl px-3 py-2 text-left text-sm font-medium transition',
               activeTab === item.key
-                ? 'bg-brand-50 text-brand-700'
-                : 'text-campus-600 hover:bg-campus-100',
+                ? 'border border-brand-200 bg-brand-50 text-brand-700'
+                : 'border border-transparent text-campus-600 hover:border-campus-200 hover:bg-white',
             ].join(' ')}
           >
             {item.label}

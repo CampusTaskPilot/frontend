@@ -42,9 +42,9 @@ export function DashboardScheduleSection({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl text-campus-900">가까운 일정</h2>
-            <p className="mt-1 text-sm leading-6 text-campus-500 text-[12.5px]">
+            {/* <p className="mt-1 text-xs leading-6 text-campus-500">
               업무 다음으로 바로 확인해야 할 오늘 일정과 다가오는 팀 일정을 모았습니다.
-            </p>
+            </p> */}
           </div>
           <span className="inline-flex rounded-full bg-campus-100 px-3 py-1 text-xs font-medium text-campus-700 ring-1 ring-inset ring-campus-200 ml-auto">
             {isLoading ? '...' : `${items.length}개`}

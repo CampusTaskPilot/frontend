@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { cn } from '../../../lib/cn'
 import { supabase } from '../../../lib/supabase'
+import {
+  AiTaskGenerationApiError,
+  fetchAiTaskGenerationStatus,
+  startAiTaskGeneration,
+} from '../lib/aiTaskGeneration'
+import {
+  AiTaskAssignmentApiError,
+  fetchAiTaskAssignmentStatus,
+  startAiTaskAssignment,
+} from '../lib/aiTaskAssignment'
 import {
   createTask,
   createTodo,
@@ -15,6 +25,8 @@ import {
   updateTodoDone,
 } from '../lib/taskWorkspace'
 import type {
+  AiTaskAssignmentStatus,
+  AiTaskGenerationStatus,
   TeamMemberWithProfile,
   TeamMemberRole,
   TeamTaskPriority,
@@ -59,6 +71,23 @@ function formatDateTimeLabel(value: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date)
+}
+
+function formatRemainingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  if (minutes <= 0) return `${seconds}초 후 다시 시도할 수 있어요.`
+  if (seconds === 0) return `${minutes}분 후 다시 시도할 수 있어요.`
+  return `${minutes}분 ${seconds}초 후 다시 시도할 수 있어요.`
+}
+
+function formatCountdown(totalSeconds: number) {
+  const safeSeconds = Math.max(totalSeconds, 0)
+  const minutes = Math.floor(safeSeconds / 60)
+  const seconds = safeSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
 function taskStatusLabel(status: TeamTaskStatus) {
@@ -120,16 +149,23 @@ function TaskMetaBadge({
   )
 }
 
+const stableGhostButtonClass = 'hover:bg-white active:bg-white'
+const stableSubtleButtonClass = 'hover:bg-brand-50 active:bg-brand-50'
+
 function EmptyTaskState({
   isLeader,
   isCompletedView,
   onCreate,
   onRecommend,
+  recommendDisabled = false,
+  recommendLabel = 'AI Task 자동 생성',
 }: {
   isLeader: boolean
   isCompletedView: boolean
   onCreate: () => void
   onRecommend: () => void
+  recommendDisabled?: boolean
+  recommendLabel?: string
 }) {
   return (
     <Card className="overflow-hidden bg-gradient-to-br from-campus-50 via-white to-brand-50">
@@ -151,8 +187,16 @@ function EmptyTaskState({
               <Button type="button" onClick={onCreate}>
                 Task 생성
               </Button>
-              <Button type="button" variant="ghost" onClick={onRecommend}>
-                AI 추천 Task 받기
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onRecommend}
+                disabled={recommendDisabled}
+                className={stableGhostButtonClass}
+                title={recommendLabel}
+                aria-label={recommendLabel}
+              >
+                {recommendLabel}
               </Button>
             </div>
           )}
@@ -204,6 +248,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const [todoDrafts, setTodoDrafts] = useState<Record<string, string>>({})
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({})
   const [aiNotice, setAiNotice] = useState('')
+  const [aiGenerationStatus, setAiGenerationStatus] = useState<AiTaskGenerationStatus | null>(null)
+  const [isAiGenerationStarting, setIsAiGenerationStarting] = useState(false)
+  const [aiAssignmentStatus, setAiAssignmentStatus] = useState<AiTaskAssignmentStatus | null>(null)
+  const [isAiAssignmentStarting, setIsAiAssignmentStarting] = useState(false)
+  const activeAiGenerationLogIdRef = useRef('')
+  const activeAiAssignmentJobIdRef = useRef('')
 
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.user_id, member] as const)),
@@ -211,6 +261,47 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   )
   const isLeader = currentUserRole === 'leader'
   const isEditing = editingTaskId.length > 0
+  const aiGenerationJobStatus = aiGenerationStatus?.latest_log?.status ?? null
+  const isAiGenerating = aiGenerationJobStatus === 'pending' || aiGenerationJobStatus === 'running'
+  const isAiCooldownActive =
+    !isAiGenerating && (aiGenerationStatus?.cooldown_remaining_seconds ?? 0) > 0
+  const aiTaskGenerationDisabled =
+    !isLeader || !currentUserId || isAiGenerationStarting || isAiGenerating || isAiCooldownActive
+  const aiAssignmentStatusValue = aiAssignmentStatus?.status ?? 'idle'
+  const isAiAssigning = aiAssignmentStatusValue === 'pending' || aiAssignmentStatusValue === 'running'
+  const isAiAssignmentCooldownActive =
+    aiAssignmentStatusValue === 'cooldown' && (aiAssignmentStatus?.remaining_seconds ?? 0) > 0
+  const aiTaskAssignmentDisabled =
+    !isLeader || !currentUserId || isAiAssignmentStarting || isAiAssigning || isAiAssignmentCooldownActive
+  const aiTaskButtonLabel = isAiGenerating
+    ? 'AI가 추가중...'
+    : isAiCooldownActive
+      ? '잠시 후 다시 시도'
+      : 'AI Task 자동 생성'
+  const aiAssignmentButtonLabel = isAiAssigning
+    ? 'AI가 업무를 배분중입니다...'
+    : isAiAssignmentCooldownActive
+      ? `다시 배분까지 ${formatCountdown(aiAssignmentStatus?.remaining_seconds ?? 0)}`
+      : 'AI 업무 자동 배분'
+  const aiTaskHelpMessage = isAiGenerating
+    ? 'AI가 Task를 추가중입니다... 기존 작업은 계속 진행할 수 있어요.'
+    : isAiCooldownActive
+      ? formatRemainingTime(aiGenerationStatus?.cooldown_remaining_seconds ?? 0)
+      : aiGenerationStatus?.latest_log?.status === 'failed'
+        ? aiGenerationStatus.latest_log.error_message || 'AI Task 생성에 실패했어요.'
+        : aiNotice
+
+  const aiAssignmentHelpMessage = isAiAssigning
+    ? 'AI가 업무를 배분중입니다... 기존 작업은 계속 진행할 수 있어요.'
+    : isAiAssignmentCooldownActive
+      ? `다시 배분까지 ${formatCountdown(aiAssignmentStatus?.remaining_seconds ?? 0)}`
+      : aiAssignmentStatus?.latest_log?.status === 'failed'
+        ? aiAssignmentStatus.latest_log.error_message || 'AI 업무 자동 배분에 실패했습니다.'
+        : aiAssignmentStatus?.latest_log?.status === 'completed'
+          ? aiAssignmentStatus.latest_log.assigned_count > 0
+            ? `AI가 ${aiAssignmentStatus.latest_log.assigned_count}개의 Task 담당자를 배정했어요.`
+            : '배정 가능한 Task를 검토했지만 업데이트할 담당자가 없었어요.'
+          : ''
 
   const displayAssigneeName = useCallback((task: TeamTaskWithTodos) => {
     if (!task.assignee_id) return '미지정'
@@ -262,6 +353,182 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   useEffect(() => {
     void loadTasks()
   }, [loadTasks])
+
+  const syncAiGenerationStatus = useCallback((nextStatus: AiTaskGenerationStatus) => {
+    setAiGenerationStatus(nextStatus)
+    const latestLog = nextStatus.latest_log
+    if (latestLog && (latestLog.status === 'pending' || latestLog.status === 'running')) {
+      activeAiGenerationLogIdRef.current = latestLog.id
+    }
+  }, [])
+
+  const syncAiAssignmentStatus = useCallback((nextStatus: AiTaskAssignmentStatus) => {
+    setAiAssignmentStatus(nextStatus)
+    if (nextStatus.current_job_id) {
+      activeAiAssignmentJobIdRef.current = nextStatus.current_job_id
+      return
+    }
+
+    const latestLog = nextStatus.latest_log
+    if (latestLog && (latestLog.status === 'pending' || latestLog.status === 'running')) {
+      activeAiAssignmentJobIdRef.current = latestLog.id
+    }
+  }, [])
+
+  const loadAiStatus = useCallback(async () => {
+    try {
+      const result = await fetchAiTaskGenerationStatus(teamId)
+      syncAiGenerationStatus(result)
+    } catch (error) {
+      setAiNotice(error instanceof Error ? error.message : 'AI Task 상태를 불러오지 못했습니다.')
+    }
+  }, [syncAiGenerationStatus, teamId])
+
+  const loadAiAssignmentStatus = useCallback(async () => {
+    try {
+      const result = await fetchAiTaskAssignmentStatus(teamId)
+      syncAiAssignmentStatus(result)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'AI 업무 자동 배분 상태를 불러오지 못했습니다.')
+    }
+  }, [syncAiAssignmentStatus, teamId])
+
+  useEffect(() => {
+    void loadAiStatus()
+  }, [loadAiStatus])
+
+  useEffect(() => {
+    void loadAiAssignmentStatus()
+  }, [loadAiAssignmentStatus])
+
+  useEffect(() => {
+    if (!isAiGenerating) return
+
+    const interval = window.setInterval(() => {
+      void loadAiStatus()
+    }, 3000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [isAiGenerating, loadAiStatus])
+
+  useEffect(() => {
+    if (!isAiAssigning) return
+
+    const interval = window.setInterval(() => {
+      void loadAiAssignmentStatus()
+    }, 3000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [isAiAssigning, loadAiAssignmentStatus])
+
+  useEffect(() => {
+    if (!aiGenerationStatus?.cooldown_until) return
+
+    const interval = window.setInterval(() => {
+      setAiGenerationStatus((current) => {
+        if (!current?.cooldown_until) return current
+        const remainingSeconds = Math.max(
+          Math.ceil((new Date(current.cooldown_until).getTime() - Date.now()) / 1000),
+          0,
+        )
+        if (remainingSeconds === current.cooldown_remaining_seconds) {
+          return current
+        }
+
+        return {
+          ...current,
+          cooldown_remaining_seconds: remainingSeconds,
+        }
+      })
+    }, 1000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [aiGenerationStatus?.cooldown_until])
+
+  useEffect(() => {
+    if (!aiAssignmentStatus?.cooldown_until) return
+
+    const interval = window.setInterval(() => {
+      setAiAssignmentStatus((current) => {
+        if (!current?.cooldown_until) return current
+        const remainingSeconds = Math.max(
+          Math.ceil((new Date(current.cooldown_until).getTime() - Date.now()) / 1000),
+          0,
+        )
+        const nextStatus =
+          current.status === 'pending' || current.status === 'running'
+            ? current.status
+            : remainingSeconds > 0
+              ? 'cooldown'
+              : current.latest_log?.status === 'failed'
+                ? 'failed'
+                : current.latest_log?.status === 'completed'
+                  ? 'completed'
+                  : 'idle'
+
+        if (remainingSeconds === current.remaining_seconds && nextStatus === current.status) {
+          return current
+        }
+
+        return {
+          ...current,
+          status: nextStatus,
+          remaining_seconds: remainingSeconds,
+        }
+      })
+    }, 1000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [aiAssignmentStatus?.cooldown_until])
+
+  useEffect(() => {
+    const latestLog = aiGenerationStatus?.latest_log
+    if (!latestLog) return
+    if (latestLog.id !== activeAiGenerationLogIdRef.current) return
+
+    if (latestLog.status === 'completed') {
+      activeAiGenerationLogIdRef.current = ''
+      setAiNotice(
+        latestLog.created_count > 0
+          ? `AI가 ${latestLog.created_count}개의 Task를 추가했어요.`
+          : 'AI가 중복을 제외한 결과를 검토했지만 새로 추가할 Task는 없었어요.',
+      )
+      void loadTasks()
+      return
+    }
+
+    if (latestLog.status === 'failed') {
+      activeAiGenerationLogIdRef.current = ''
+      setErrorMessage(latestLog.error_message || 'AI Task 생성에 실패했습니다.')
+    }
+  }, [aiGenerationStatus, loadTasks])
+
+  useEffect(() => {
+    const latestLog = aiAssignmentStatus?.latest_log
+    if (!latestLog) return
+    if (latestLog.id !== activeAiAssignmentJobIdRef.current) return
+
+    if (latestLog.status === 'completed') {
+      activeAiAssignmentJobIdRef.current = ''
+      if (latestLog.assigned_count > 0) {
+        void loadTasks()
+      }
+      return
+    }
+
+    if (latestLog.status === 'failed') {
+      activeAiAssignmentJobIdRef.current = ''
+      setErrorMessage(latestLog.error_message || 'AI 업무 자동 배분에 실패했습니다.')
+    }
+  }, [aiAssignmentStatus, loadTasks])
 
   useEffect(() => {
     const tasksChannel = supabase
@@ -349,6 +616,16 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     const trimmedTitle = taskTitle.trim()
     if (!trimmedTitle) {
       setErrorMessage('Task 제목을 입력해주세요.')
+      return
+    }
+
+    if (trimmedTitle.length > 15) {
+      setErrorMessage('Task 제목은 15글자 이내로 입력해주세요.')
+      return
+    }
+
+    if (taskDescription.trim().length > 100) {
+      setErrorMessage('Task 설명은 100글자 이내로 입력해주세요.')
       return
     }
 
@@ -541,7 +818,49 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }
 
   function handleRecommendTasks() {
-    if (!isLeader) return
+    if (!isLeader || !currentUserId || aiTaskGenerationDisabled) return
+
+    setIsAiGenerationStarting(true)
+    setErrorMessage('')
+
+    void (async () => {
+      try {
+        const result = await startAiTaskGeneration({
+          teamId,
+          requesterProfileId: currentUserId,
+        })
+
+        activeAiGenerationLogIdRef.current = result.latest_log.id
+        setAiNotice('AI가 Task를 추가중입니다... 기존 작업은 계속 진행할 수 있어요.')
+        syncAiGenerationStatus({
+          can_trigger: false,
+          cooldown_minutes: result.cooldown_minutes,
+          cooldown_remaining_seconds: Math.max(
+            Math.ceil((new Date(result.cooldown_until).getTime() - Date.now()) / 1000),
+            0,
+          ),
+          cooldown_until: result.cooldown_until,
+          latest_log: result.latest_log,
+          message: result.message,
+        })
+      } catch (error) {
+        if (error instanceof AiTaskGenerationApiError && error.payload) {
+          syncAiGenerationStatus({
+            can_trigger: error.payload.can_trigger ?? false,
+            cooldown_minutes: error.payload.cooldown_minutes ?? 10,
+            cooldown_remaining_seconds: error.payload.cooldown_remaining_seconds ?? 0,
+            cooldown_until: error.payload.cooldown_until ?? null,
+            latest_log: error.payload.latest_log ?? null,
+            message: error.payload.message ?? error.message,
+          })
+        }
+
+        setErrorMessage(error instanceof Error ? error.message : 'AI Task 생성을 시작하지 못했습니다.')
+      } finally {
+        setIsAiGenerationStarting(false)
+      }
+    })()
+    return
     // TODO: AI task recommendation API가 연결되면 팀 컨텍스트 기준 추천 결과를 받아오도록 연결합니다.
     setAiNotice('AI Task 추천은 아직 연결 전입니다. 이후 팀 목표와 멤버 역할을 바탕으로 초안 Task를 제안하도록 붙일 수 있습니다.')
   }
@@ -554,10 +873,49 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     setAiNotice(`"${taskTitleLabel}" 기준 AI Todo 추천은 준비만 되어 있습니다. 나중에 API를 연결하면 바로 붙일 수 있게 핸들러를 분리해두었습니다.`)
   }
 
-  function handleAutoAssignTasks() {
-    if (!isLeader) return
-    // TODO: AI auto assignment API가 연결되면 팀원 역할과 현재 분배량을 반영해 assignee를 추천/반영합니다.
-    setAiNotice('AI 업무 자동 배분은 아직 연결 전입니다. 추후 팀원 스킬, 현재 할당량, 마감 우선순위를 기준으로 추천하도록 확장할 수 있습니다.')
+  function handleRunAiTaskAssignment() {
+    if (!isLeader || !currentUserId || aiTaskAssignmentDisabled) return
+
+    void (async () => {
+      setIsAiAssignmentStarting(true)
+      setErrorMessage('')
+
+      try {
+        const result = await startAiTaskAssignment({
+          teamId,
+          requesterProfileId: currentUserId,
+        })
+
+        activeAiAssignmentJobIdRef.current = result.latest_log.id
+        syncAiAssignmentStatus({
+          status: result.status,
+          cooldown_until: result.cooldown_until,
+          remaining_seconds: result.remaining_seconds,
+          error_message: null,
+          assigned_count: result.latest_log.assigned_count,
+          last_run_at: result.latest_log.started_at,
+          current_job_id: result.latest_log.id,
+          latest_log: result.latest_log,
+        })
+      } catch (error) {
+        if (error instanceof AiTaskAssignmentApiError && error.payload) {
+          syncAiAssignmentStatus({
+            status: error.payload.status ?? 'failed',
+            cooldown_until: error.payload.cooldown_until ?? null,
+            remaining_seconds: error.payload.remaining_seconds ?? 0,
+            error_message: error.payload.error_message ?? error.message,
+            assigned_count: error.payload.assigned_count ?? 0,
+            last_run_at: error.payload.last_run_at ?? null,
+            current_job_id: error.payload.current_job_id ?? null,
+            latest_log: error.payload.latest_log ?? null,
+          })
+        }
+
+        setErrorMessage(error instanceof Error ? error.message : 'AI 업무 자동 배분을 시작하지 못했습니다.')
+      } finally {
+        setIsAiAssignmentStarting(false)
+      }
+    })()
   }
 
   return (
@@ -609,11 +967,17 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   >
                     {showCreateForm && !isEditing ? '생성 폼 닫기' : 'Task 생성'}
                   </Button>
-                  <Button type="button" variant="ghost" onClick={handleRecommendTasks}>
-                    AI 추천 Task 받기
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleRecommendTasks}
+                    disabled={aiTaskGenerationDisabled}
+                    className={stableGhostButtonClass}
+                  >
+                    {aiTaskButtonLabel}
                   </Button>
-                  <Button type="button" variant="subtle" onClick={handleAutoAssignTasks}>
-                    AI 업무 자동 배분하기
+                  <Button type="button" variant="subtle" className={stableSubtleButtonClass} onClick={handleRunAiTaskAssignment} disabled={aiTaskAssignmentDisabled}>
+                    {aiAssignmentButtonLabel}
                   </Button>
                 </div>
               ) : (
@@ -631,7 +995,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   </div>
                   <TaskMetaBadge tone="brand">Beta</TaskMetaBadge>
                 </div>
-                {aiNotice && <p className="mt-3 text-xs leading-5 text-campus-700">{aiNotice}</p>}
+                {aiTaskHelpMessage && (
+                  <p className="mt-3 text-xs leading-5 text-campus-700">{aiTaskHelpMessage}</p>
+                )}
+                {aiAssignmentHelpMessage && (
+                  <p className="mt-2 text-xs leading-5 text-campus-700">{aiAssignmentHelpMessage}</p>
+                )}
               </div>
             </div>
           </div>
@@ -657,10 +1026,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               <span>제목</span>
               <input
                 value={taskTitle}
-                onChange={(event) => setTaskTitle(event.target.value)}
+                onChange={(event) => setTaskTitle(event.target.value.slice(0, 15))}
+                maxLength={15}
                 placeholder="예: 발표 자료 구조 정리"
                 className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
               />
+              <p className="text-xs text-campus-500">{taskTitle.length}/15</p>
             </label>
 
             <label className="space-y-2 text-sm font-medium text-campus-700">
@@ -683,11 +1054,13 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               <span>설명</span>
               <textarea
                 value={taskDescription}
-                onChange={(event) => setTaskDescription(event.target.value)}
+                onChange={(event) => setTaskDescription(event.target.value.slice(0, 100))}
+                maxLength={100}
                 rows={4}
                 placeholder="과제 범위, 기대 결과물, 참고할 내용을 적어두면 팀원이 빠르게 이해할 수 있습니다."
                 className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
               />
+              <p className="text-xs text-campus-500">{taskDescription.length}/100</p>
             </label>
 
             <label className="space-y-2 text-sm font-medium text-campus-700">
@@ -733,11 +1106,11 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 {isCreatingTask ? (isEditing ? '수정 중...' : '생성 중...') : isEditing ? 'Task 수정 저장' : 'Task 생성'}
               </Button>
               {isEditing && (
-                <Button type="button" variant="ghost" onClick={() => void handleDeleteTask()} disabled={isDeletingTask || isCreatingTask}>
+                <Button type="button" variant="ghost" className={stableGhostButtonClass} onClick={() => void handleDeleteTask()} disabled={isDeletingTask || isCreatingTask}>
                   {isDeletingTask ? '삭제 중...' : 'Task 삭제'}
                 </Button>
               )}
-              <Button type="button" variant="ghost" onClick={resetTaskForm} disabled={isCreatingTask || isDeletingTask}>
+              <Button type="button" variant="ghost" className={stableGhostButtonClass} onClick={resetTaskForm} disabled={isCreatingTask || isDeletingTask}>
                 취소
               </Button>
             </div>
@@ -759,8 +1132,8 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               className={cn(
                 'rounded-full px-4 py-2 text-sm font-medium transition',
                 activeView === 'active'
-                  ? 'bg-campus-900 text-white'
-                  : 'border border-campus-200 bg-white text-campus-600 hover:bg-campus-50',
+                  ? 'border border-brand-200 bg-brand-50 text-brand-700'
+                  : 'border border-campus-200 bg-white text-campus-600 hover:bg-white active:bg-white',
               )}
             >
               Active Tasks
@@ -771,8 +1144,8 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               className={cn(
                 'rounded-full px-4 py-2 text-sm font-medium transition',
                 activeView === 'completed'
-                  ? 'bg-campus-900 text-white'
-                  : 'border border-campus-200 bg-white text-campus-600 hover:bg-campus-50',
+                  ? 'border border-brand-200 bg-brand-50 text-brand-700'
+                  : 'border border-campus-200 bg-white text-campus-600 hover:bg-white active:bg-white',
               )}
             >
               Completed Tasks
@@ -787,7 +1160,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               value={searchKeyword}
               onChange={(event) => setSearchKeyword(event.target.value)}
               placeholder="Task 제목, 설명, 담당자 검색"
-              className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
+              className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400"
             />
           </label>
 
@@ -796,7 +1169,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
             <select
               value={sortBy}
               onChange={(event) => setSortBy(event.target.value as TaskSortKey)}
-              className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
+              className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400"
             >
               <option value="priority">우선순위 순</option>
               <option value="due_date">마감일 순</option>
@@ -810,10 +1183,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               type="button"
               onClick={() => setShowMineOnly((current) => !current)}
               className={cn(
-                'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm transition',
+                'flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-3 text-sm transition',
                 showMineOnly
-                  ? 'border-brand-200 bg-brand-50 text-brand-600'
-                  : 'border-campus-200 bg-white text-campus-700',
+                  ? 'border-brand-300 text-brand-600'
+                  : 'border-campus-200 text-campus-700',
               )}
             >
               <span>{showMineOnly ? '나에게 할당된 Task만' : '전체 Task 보기'}</span>
@@ -822,7 +1195,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           </label>
 
           <div className="flex items-end">
-            <Button type="button" variant="ghost" className="w-full" onClick={() => void loadTasks()}>
+            <Button type="button" variant="ghost" className={cn('w-full', stableGhostButtonClass)} onClick={() => void loadTasks()}>
               새로고침
             </Button>
           </div>
@@ -832,6 +1205,20 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       {errorMessage && (
         <Card className="border-rose-200 bg-rose-50">
           <p className="text-sm text-rose-600">{errorMessage}</p>
+        </Card>
+      )}
+
+      {isAiGenerating && (
+        <Card className="border-brand-100 bg-brand-50">
+          <p className="text-sm font-semibold text-brand-700">AI가 Task를 추가중입니다...</p>
+          <p className="mt-1 text-sm text-campus-600">기존 작업은 계속 진행할 수 있어요.</p>
+        </Card>
+      )}
+
+      {isAiAssigning && (
+        <Card className="border-brand-100 bg-brand-50">
+          <p className="text-sm font-semibold text-brand-700">AI가 업무를 배분중입니다...</p>
+          <p className="mt-1 text-sm text-campus-600">기존 작업은 계속 진행할 수 있어요.</p>
         </Card>
       )}
 
@@ -845,6 +1232,8 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           isCompletedView={activeView === 'completed'}
           onCreate={() => setShowCreateForm(true)}
           onRecommend={handleRecommendTasks}
+          recommendDisabled={aiTaskGenerationDisabled}
+          recommendLabel={aiTaskButtonLabel}
         />
       ) : (
         <div className="space-y-4">
@@ -915,7 +1304,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     <div className="grid gap-2 text-sm text-campus-700">
                       {isLeader && (
                         <div className="flex justify-start">
-                          <Button type="button" size="sm" variant="ghost" onClick={() => handleStartEdit(task)}>
+                          <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => handleStartEdit(task)}>
                             수정
                           </Button>
                         </div>
@@ -986,11 +1375,11 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     <span>{meta.total === 0 ? '체크리스트를 추가해 세부 작업을 나눠보세요.' : `${meta.completed}개 완료됨`}</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setExpandedTasks((current) => ({ ...current, [task.id]: !isExpanded }))}>
+                    <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => setExpandedTasks((current) => ({ ...current, [task.id]: !isExpanded }))}>
                       {isExpanded ? '접기' : 'Todo 펼치기'}
                     </Button>
                     {canEditTodos ? (
-                      <Button type="button" size="sm" variant="subtle" onClick={() => handleRecommendTodos(task.id)}>
+                      <Button type="button" size="sm" variant="subtle" className={stableSubtleButtonClass} onClick={() => handleRecommendTodos(task.id)}>
                         AI가 추천해주는 Todo List 받기
                       </Button>
                     ) : (
@@ -1069,7 +1458,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                               </Button>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Button type="button" size="sm" variant="ghost" onClick={() => handleRecommendTodos(task.id)}>
+                              <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => handleRecommendTodos(task.id)}>
                                 AI Todo 추천
                               </Button>
                               <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs text-campus-500 ring-1 ring-inset ring-campus-200">
@@ -1094,3 +1483,4 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     </div>
   )
 }
+

@@ -108,7 +108,7 @@ export async function fetchSkillOptions() {
 }
 
 export async function fetchTeamWorkspaceBase(teamId: string, userId: string | null): Promise<TeamWorkspaceBase> {
-  const [teamResult, membersResult] = await Promise.all([
+  const [teamResult, membersResult, teamSkillsResult] = await Promise.all([
     supabase
       .from('teams')
       .select('id,leader_id,name,summary,description,category,max_members,is_recruiting,created_at')
@@ -118,6 +118,7 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
       .from('team_members')
       .select('id,team_id,user_id,role,status,joined_at')
       .eq('team_id', teamId),
+    supabase.from('team_skills').select('skill_id').eq('team_id', teamId),
   ])
 
   if (teamResult.error) {
@@ -128,11 +129,21 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
     throw membersResult.error
   }
 
+  if (teamSkillsResult.error) {
+    throw teamSkillsResult.error
+  }
+
   const team = teamResult.data ? toTeamRecord(teamResult.data) : null
   const members = ((membersResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
   const currentUserRole = userId ? members.find((member) => member.user_id === userId)?.role ?? null : null
+  const skillIds = uniqueSkillIds(
+    ((teamSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((item) =>
+      Number(item.skill_id ?? 0),
+    ),
+  )
 
   let leader: ProfileSummary | null = null
+  let skills: TeamSkillTag[] = []
 
   if (team?.leader_id) {
     const leaderProfileResult = await supabase
@@ -150,10 +161,25 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
     }
   }
 
+  if (skillIds.length > 0) {
+    const skillsResult = await supabase
+      .from('skills')
+      .select('id,name')
+      .in('id', skillIds)
+      .order('name')
+
+    if (skillsResult.error) {
+      throw skillsResult.error
+    }
+
+    skills = ((skillsResult.data ?? []) as unknown[]).map(toTeamSkillTag)
+  }
+
   return {
     team,
     current_user_role: currentUserRole,
     leader,
+    skills,
   }
 }
 

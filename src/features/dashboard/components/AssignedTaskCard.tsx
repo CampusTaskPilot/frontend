@@ -67,18 +67,18 @@ export function AssignedTaskCard({ task }: AssignedTaskCardProps) {
     <Link to={`/teams/${task.team_id}?tab=tasks`} className="block h-full">
       <Card className="group h-full rounded-[30px] border-campus-200 bg-white/95 p-5 transition duration-200 hover:-translate-y-1 hover:border-brand-200 hover:shadow-[0_24px_48px_rgba(53,93,255,0.12)]">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
             <div className="min-w-0 space-y-2">
               <p className="truncate text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-600">
                 {task.team?.name ?? '팀 미지정'}
               </p>
-              <h3 className="text-lg font-semibold leading-7 text-campus-900 transition group-hover:text-brand-600">
+              <h3 className="line-clamp-2 text-lg font-semibold leading-7 text-campus-900 transition group-hover:text-brand-600">
                 {task.title}
               </h3>
             </div>
             <span
               className={cn(
-                'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset',
+                'inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset',
                 statusBadgeClass(task.status),
               )}
             >

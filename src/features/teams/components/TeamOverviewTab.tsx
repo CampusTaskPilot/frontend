@@ -181,6 +181,7 @@ export function TeamOverviewTab({
               <p>
                 Leader: <span className="font-medium text-campus-900">{leaderName}</span>
               </p>
+              
             </div>
           </Card>
 

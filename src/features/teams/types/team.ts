@@ -60,6 +60,7 @@ export interface TeamWorkspaceBase {
   team: TeamRecord | null
   current_user_role: TeamMemberRole | null
   leader: ProfileSummary | null
+  skills: TeamSkillTag[]
 }
 
 export type TeamTaskStatus = 'todo' | 'in_progress' | 'done'
@@ -102,6 +103,78 @@ export interface TeamTaskRecord {
 export interface TeamTaskWithTodos extends TeamTaskRecord {
   assignee: ProfileSummary | null
   todos: TeamTodoRecord[]
+}
+
+export type AiTaskGenerationJobStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface AiTaskGenerationLog {
+  id: string
+  team_id: string
+  requested_by: string
+  status: AiTaskGenerationJobStatus
+  created_count: number
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface AiTaskGenerationStatus {
+  can_trigger: boolean
+  cooldown_minutes: number
+  cooldown_remaining_seconds: number
+  cooldown_until: string | null
+  latest_log: AiTaskGenerationLog | null
+  message: string | null
+}
+
+export interface AiTaskGenerationStartResponse {
+  accepted: boolean
+  message: string
+  latest_log: AiTaskGenerationLog
+  cooldown_minutes: number
+  cooldown_until: string
+}
+
+export type AiTaskAssignmentStatusType =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cooldown'
+
+export interface AiTaskAssignmentLog {
+  id: string
+  team_id: string
+  requested_by: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  assigned_count: number
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AiTaskAssignmentStatus {
+  status: AiTaskAssignmentStatusType
+  cooldown_until: string | null
+  remaining_seconds: number
+  error_message: string | null
+  assigned_count: number
+  last_run_at: string | null
+  current_job_id: string | null
+  latest_log: AiTaskAssignmentLog | null
+}
+
+export interface AiTaskAssignmentStartResponse {
+  accepted: boolean
+  message: string
+  latest_log: AiTaskAssignmentLog
+  status: AiTaskAssignmentStatusType
+  cooldown_until: string
+  remaining_seconds: number
 }
 
 export type TeamCalendarEventType = 'general' | 'meeting' | 'deadline' | 'presentation'

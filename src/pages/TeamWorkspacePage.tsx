@@ -74,6 +74,8 @@ export function TeamWorkspacePage() {
         const result = await fetchTeamWorkspaceBase(currentTeamId, user?.id ?? null)
         if (!isMounted) return
         setBaseData(result)
+        setSkills(result.skills)
+        setSkillsLoaded(true)
       } catch (error: unknown) {
         if (!isMounted) return
       
