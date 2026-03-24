@@ -73,15 +73,6 @@ function formatDateTimeLabel(value: string | null) {
   }).format(date)
 }
 
-function formatRemainingTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-
-  if (minutes <= 0) return `${seconds}초 후 다시 시도할 수 있어요.`
-  if (seconds === 0) return `${minutes}분 후 다시 시도할 수 있어요.`
-  return `${minutes}분 ${seconds}초 후 다시 시도할 수 있어요.`
-}
-
 function formatCountdown(totalSeconds: number) {
   const safeSeconds = Math.max(totalSeconds, 0)
   const minutes = Math.floor(safeSeconds / 60)
@@ -276,7 +267,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const aiTaskButtonLabel = isAiGenerating
     ? 'AI가 추가중...'
     : isAiCooldownActive
-      ? '잠시 후 다시 시도'
+      ? `다시 생성까지 ${formatCountdown(aiGenerationStatus?.cooldown_remaining_seconds ?? 0)}`
       : 'AI Task 자동 생성'
   const aiAssignmentButtonLabel = isAiAssigning
     ? 'AI가 업무를 배분중입니다...'
@@ -285,9 +276,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       : 'AI 업무 자동 배분'
   const aiTaskHelpMessage = isAiGenerating
     ? 'AI가 Task를 추가중입니다... 기존 작업은 계속 진행할 수 있어요.'
-    : isAiCooldownActive
-      ? formatRemainingTime(aiGenerationStatus?.cooldown_remaining_seconds ?? 0)
-      : aiGenerationStatus?.latest_log?.status === 'failed'
+    : aiGenerationStatus?.latest_log?.status === 'failed'
         ? aiGenerationStatus.latest_log.error_message || 'AI Task 생성에 실패했어요.'
         : aiNotice
 
