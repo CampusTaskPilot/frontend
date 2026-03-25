@@ -177,6 +177,52 @@ export interface AiTaskAssignmentStartResponse {
   remaining_seconds: number
 }
 
+export type AiTodoGenerationStatusType =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cooldown'
+
+export interface AiTodoGenerationLog {
+  id: string
+  task_id: string
+  team_id: string
+  requested_by: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  created_count: number
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AiTodoGenerationStatus {
+  status: AiTodoGenerationStatusType
+  cooldown_until: string | null
+  remaining_seconds: number
+  error_message: string | null
+  created_count: number
+  last_run_at: string | null
+  current_job_id: string | null
+  latest_log: AiTodoGenerationLog | null
+  created_todos: TeamTodoRecord[]
+}
+
+export interface AiTodoGenerationStartResponse {
+  accepted: boolean
+  message: string
+  latest_log: AiTodoGenerationLog
+  status: AiTodoGenerationStatusType
+  cooldown_until: string
+  remaining_seconds: number
+  created_count: number
+  created_todos: TeamTodoRecord[]
+}
+
 export type TeamCalendarEventType = 'general' | 'meeting' | 'deadline' | 'presentation'
 
 export interface TeamCalendarEventRecord {

@@ -8,6 +8,11 @@ import type {
   TeamTodoRecord,
 } from '../types/team'
 
+const taskSelectColumns =
+  'id,team_id,title,description,status,priority,assignee_id,created_by,due_date,completed_at,position,created_at,updated_at'
+const todoSelectColumns =
+  'id,task_id,content,is_done,position,created_by,created_at,updated_at'
+
 function toProfileSummary(value: unknown): ProfileSummary {
   const row = value as Record<string, unknown>
 
@@ -72,9 +77,7 @@ function toTodoRecord(value: unknown): TeamTodoRecord {
 export async function fetchTeamTasksWorkspace(teamId: string): Promise<TeamTaskWithTodos[]> {
   const tasksResult = await supabase
     .from('tasks')
-    .select(
-      'id,team_id,title,description,status,priority,assignee_id,created_by,due_date,completed_at,position,created_at,updated_at',
-    )
+    .select(taskSelectColumns)
     .eq('team_id', teamId)
     .order('status', { ascending: true })
     .order('position', { ascending: true })
@@ -92,7 +95,7 @@ export async function fetchTeamTasksWorkspace(teamId: string): Promise<TeamTaskW
     taskIds.length > 0
       ? supabase
           .from('todos')
-          .select('id,task_id,content,is_done,position,created_by,created_at,updated_at')
+          .select(todoSelectColumns)
           .in('task_id', taskIds)
           .order('position', { ascending: true })
           .order('created_at', { ascending: true })
@@ -137,9 +140,7 @@ export async function fetchTeamTasksWorkspace(teamId: string): Promise<TeamTaskW
 export async function fetchTaskSnapshot(taskId: string): Promise<TeamTaskRecord | null> {
   const taskResult = await supabase
     .from('tasks')
-    .select(
-      'id,team_id,title,description,status,priority,assignee_id,created_by,due_date,completed_at,position,created_at,updated_at',
-    )
+    .select(taskSelectColumns)
     .eq('id', taskId)
     .maybeSingle()
 
@@ -148,6 +149,53 @@ export async function fetchTaskSnapshot(taskId: string): Promise<TeamTaskRecord 
   }
 
   return taskResult.data ? toTaskRecord(taskResult.data) : null
+}
+
+export async function fetchTaskWorkspace(taskId: string): Promise<TeamTaskWithTodos | null> {
+  const taskResult = await supabase
+    .from('tasks')
+    .select(taskSelectColumns)
+    .eq('id', taskId)
+    .maybeSingle()
+
+  if (taskResult.error) {
+    throw taskResult.error
+  }
+
+  if (!taskResult.data) {
+    return null
+  }
+
+  const task = toTaskRecord(taskResult.data)
+  const [todosResult, profilesResult] = await Promise.all([
+    supabase
+      .from('todos')
+      .select(todoSelectColumns)
+      .eq('task_id', taskId)
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: true }),
+    task.assignee_id
+      ? supabase
+          .from('profiles')
+          .select('id,full_name,email,profile_image_url')
+          .eq('id', task.assignee_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+
+  if (todosResult.error) {
+    throw todosResult.error
+  }
+
+  if (profilesResult.error) {
+    throw profilesResult.error
+  }
+
+  return {
+    ...task,
+    assignee: profilesResult.data ? toProfileSummary(profilesResult.data) : null,
+    todos: ((todosResult.data ?? []) as unknown[]).map(toTodoRecord),
+  }
 }
 
 export async function createTask(params: {
@@ -264,5 +312,250 @@ export async function updateTodoDone(todoId: string, isDone: boolean) {
 
   if (error) {
     throw error
+  }
+}
+
+export interface WorkspaceTaskCreateInput {
+  clientId: string
+  teamId: string
+  title: string
+  description: string
+  priority: TeamTaskPriority
+  assigneeId: string | null
+  dueDate: string | null
+  createdBy: string
+  position: number
+  status: TeamTaskStatus
+}
+
+export interface WorkspaceTaskUpdateInput {
+  taskId: string
+  title?: string
+  description?: string
+  priority?: TeamTaskPriority
+  assigneeId?: string | null
+  dueDate?: string | null
+  status?: TeamTaskStatus
+  position?: number
+}
+
+export interface WorkspaceTodoCreateInput {
+  clientId: string
+  taskId: string
+  content: string
+  createdBy: string
+  position: number
+  isDone?: boolean
+}
+
+export interface WorkspaceTodoUpdateInput {
+  todoId: string
+  content?: string
+  isDone?: boolean
+  position?: number
+}
+
+export interface SaveWorkspaceChangesInput {
+  taskCreates: WorkspaceTaskCreateInput[]
+  taskUpdates: WorkspaceTaskUpdateInput[]
+  taskDeletes: string[]
+  todoCreates: WorkspaceTodoCreateInput[]
+  todoUpdates: WorkspaceTodoUpdateInput[]
+}
+
+export interface SaveWorkspaceChangesResult {
+  createdTasks: Array<{ clientId: string; task: TeamTaskRecord }>
+  updatedTasks: TeamTaskRecord[]
+  deletedTaskIds: string[]
+  createdTodos: Array<{ clientId: string; todo: TeamTodoRecord }>
+  updatedTodos: TeamTodoRecord[]
+}
+
+function buildTaskUpdatePayload(update: WorkspaceTaskUpdateInput) {
+  const payload: Record<string, unknown> = {}
+
+  if (update.title !== undefined) {
+    payload.title = update.title.trim()
+  }
+  if (update.description !== undefined) {
+    payload.description = update.description.trim() || null
+  }
+  if (update.priority !== undefined) {
+    payload.priority = update.priority
+  }
+  if (update.assigneeId !== undefined) {
+    payload.assignee_id = update.assigneeId
+  }
+  if (update.dueDate !== undefined) {
+    payload.due_date = update.dueDate
+  }
+  if (update.status !== undefined) {
+    payload.status = update.status
+    payload.completed_at = update.status === 'done' ? new Date().toISOString() : null
+  }
+  if (update.position !== undefined) {
+    payload.position = update.position
+  }
+
+  return payload
+}
+
+function buildTodoUpdatePayload(update: WorkspaceTodoUpdateInput) {
+  const payload: Record<string, unknown> = {}
+
+  if (update.content !== undefined) {
+    payload.content = update.content.trim()
+  }
+  if (update.isDone !== undefined) {
+    payload.is_done = update.isDone
+  }
+  if (update.position !== undefined) {
+    payload.position = update.position
+  }
+
+  return payload
+}
+
+export async function saveWorkspaceChanges(
+  input: SaveWorkspaceChangesInput,
+): Promise<SaveWorkspaceChangesResult> {
+  const createdTasks: Array<{ clientId: string; task: TeamTaskRecord }> = []
+  const updatedTasks: TeamTaskRecord[] = []
+  const createdTodos: Array<{ clientId: string; todo: TeamTodoRecord }> = []
+  const updatedTodos: TeamTodoRecord[] = []
+  const taskIdMap = new Map<string, string>()
+
+  if (input.taskDeletes.length > 0) {
+    const { error } = await supabase.from('tasks').delete().in('id', input.taskDeletes)
+    if (error) {
+      throw error
+    }
+  }
+
+  if (input.taskCreates.length > 0) {
+    const rows = input.taskCreates.map((task) => ({
+      team_id: task.teamId,
+      title: task.title.trim(),
+      description: task.description.trim() || null,
+      status: task.status,
+      priority: task.priority,
+      assignee_id: task.assigneeId,
+      created_by: task.createdBy,
+      due_date: task.dueDate,
+      completed_at: task.status === 'done' ? new Date().toISOString() : null,
+      position: task.position,
+    }))
+
+    const { data, error } = await supabase.from('tasks').insert(rows).select(taskSelectColumns)
+    if (error) {
+      throw error
+    }
+
+    const parsed = ((data ?? []) as unknown[]).map(toTaskRecord)
+    parsed.forEach((task, index) => {
+      const clientId = input.taskCreates[index]?.clientId
+      if (!clientId) return
+      createdTasks.push({ clientId, task })
+      taskIdMap.set(clientId, task.id)
+    })
+  }
+
+  if (input.taskUpdates.length > 0) {
+    const updateResults = await Promise.all(
+      input.taskUpdates.map(async (update) => {
+        const payload = buildTaskUpdatePayload(update)
+        if (Object.keys(payload).length === 0) {
+          return null
+        }
+
+        const { data, error } = await supabase
+          .from('tasks')
+          .update(payload)
+          .eq('id', update.taskId)
+          .select(taskSelectColumns)
+          .single()
+
+        if (error) {
+          throw error
+        }
+
+        return toTaskRecord(data)
+      }),
+    )
+
+    updateResults.forEach((task) => {
+      if (task) {
+        updatedTasks.push(task)
+      }
+    })
+  }
+
+  if (input.todoCreates.length > 0) {
+    const normalizedCreates = input.todoCreates
+      .map((todo) => ({
+        ...todo,
+        resolvedTaskId: taskIdMap.get(todo.taskId) ?? todo.taskId,
+      }))
+      .filter((todo) => !input.taskDeletes.includes(todo.resolvedTaskId))
+
+    if (normalizedCreates.length > 0) {
+      const rows = normalizedCreates.map((todo) => ({
+        task_id: todo.resolvedTaskId,
+        content: todo.content.trim(),
+        is_done: todo.isDone ?? false,
+        position: todo.position,
+        created_by: todo.createdBy,
+      }))
+
+      const { data, error } = await supabase.from('todos').insert(rows).select(todoSelectColumns)
+      if (error) {
+        throw error
+      }
+
+      const parsed = ((data ?? []) as unknown[]).map(toTodoRecord)
+      parsed.forEach((todo, index) => {
+        const clientId = normalizedCreates[index]?.clientId
+        if (!clientId) return
+        createdTodos.push({ clientId, todo })
+      })
+    }
+  }
+
+  if (input.todoUpdates.length > 0) {
+    const updateResults = await Promise.all(
+      input.todoUpdates.map(async (update) => {
+        const payload = buildTodoUpdatePayload(update)
+        if (Object.keys(payload).length === 0) {
+          return null
+        }
+
+        const { data, error } = await supabase
+          .from('todos')
+          .update(payload)
+          .eq('id', update.todoId)
+          .select(todoSelectColumns)
+          .single()
+
+        if (error) {
+          throw error
+        }
+
+        return toTodoRecord(data)
+      }),
+    )
+
+    updateResults.forEach((todo) => {
+      if (todo) {
+        updatedTodos.push(todo)
+      }
+    })
+  }
+
+  return {
+    createdTasks,
+    updatedTasks,
+    deletedTaskIds: input.taskDeletes,
+    createdTodos,
+    updatedTodos,
   }
 }

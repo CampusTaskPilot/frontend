@@ -14,18 +14,23 @@ import {
   startAiTaskAssignment,
 } from '../lib/aiTaskAssignment'
 import {
-  createTask,
-  createTodo,
-  deleteTask,
-  fetchTaskSnapshot,
+  AiTodoGenerationApiError,
+  fetchAiTodoGenerationStatus,
+  fetchAiTodoGenerationStatuses,
+  startAiTodoGeneration,
+} from '../lib/aiTaskTodoGeneration'
+import {
+  fetchTaskWorkspace,
   fetchTeamTasksWorkspace,
-  updateTask,
-  updateTaskAssignee,
-  updateTaskStatus,
-  updateTodoDone,
+  saveWorkspaceChanges,
+  type WorkspaceTaskCreateInput,
+  type WorkspaceTaskUpdateInput,
+  type WorkspaceTodoCreateInput,
+  type WorkspaceTodoUpdateInput,
 } from '../lib/taskWorkspace'
 import type {
   AiTaskAssignmentStatus,
+  AiTodoGenerationStatus,
   AiTaskGenerationStatus,
   TeamMemberWithProfile,
   TeamMemberRole,
@@ -44,6 +49,28 @@ interface TeamTasksTabProps {
 
 type TaskViewKey = 'active' | 'completed'
 type TaskSortKey = 'priority' | 'due_date' | 'recent'
+type SaveTrigger = 'manual' | 'debounce' | 'unmount' | 'visibilitychange'
+
+interface PendingWorkspaceChanges {
+  taskCreates: Record<string, WorkspaceTaskCreateInput>
+  taskUpdates: Record<string, WorkspaceTaskUpdateInput>
+  taskDeletes: string[]
+  todoCreates: Record<string, WorkspaceTodoCreateInput>
+  todoUpdates: Record<string, WorkspaceTodoUpdateInput>
+}
+
+interface TaskWorkspaceDraftSnapshot {
+  draftTasks: TeamTaskWithTodos[]
+  pendingChanges: PendingWorkspaceChanges
+}
+
+const emptyPendingChanges = (): PendingWorkspaceChanges => ({
+  taskCreates: {},
+  taskUpdates: {},
+  taskDeletes: [],
+  todoCreates: {},
+  todoUpdates: {},
+})
 
 const priorityWeight: Record<TeamTaskPriority, number> = {
   high: 0,
@@ -142,6 +169,9 @@ function TaskMetaBadge({
 
 const stableGhostButtonClass = 'hover:bg-white active:bg-white'
 const stableSubtleButtonClass = 'hover:bg-brand-50 active:bg-brand-50'
+const autosaveDelayMs = 1800
+const aiTodoRefreshRetryDelayMs = 700
+const aiTodoRefreshRetryCount = 4
 
 function EmptyTaskState({
   isLeader,
@@ -214,10 +244,42 @@ function EmptyTaskState({
   )
 }
 
+function createClientId(prefix: 'task' | 'todo') {
+  return `${prefix}-draft-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`
+}
+
+function hasPendingChanges(pending: PendingWorkspaceChanges) {
+  return (
+    Object.keys(pending.taskCreates).length > 0 ||
+    Object.keys(pending.taskUpdates).length > 0 ||
+    pending.taskDeletes.length > 0 ||
+    Object.keys(pending.todoCreates).length > 0 ||
+    Object.keys(pending.todoUpdates).length > 0
+  )
+}
+
+function mergeTaskUpdate(
+  current: WorkspaceTaskUpdateInput | undefined,
+  next: WorkspaceTaskUpdateInput,
+): WorkspaceTaskUpdateInput {
+  return { ...current, ...next, taskId: next.taskId }
+}
+
+function mergeTodoUpdate(
+  current: WorkspaceTodoUpdateInput | undefined,
+  next: WorkspaceTodoUpdateInput,
+): WorkspaceTodoUpdateInput {
+  return { ...current, ...next, todoId: next.todoId }
+}
+
 export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }: TeamTasksTabProps) {
-  const [tasks, setTasks] = useState<TeamTaskWithTodos[]>([])
+  const [serverTasks, setServerTasks] = useState<TeamTaskWithTodos[]>([])
+  const [draftTasks, setDraftTasks] = useState<TeamTaskWithTodos[]>([])
+  const [pendingChanges, setPendingChanges] = useState<PendingWorkspaceChanges>(() => emptyPendingChanges())
   const [isLoading, setIsLoading] = useState(true)
+  const [isSavingChanges, setIsSavingChanges] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
   const [activeView, setActiveView] = useState<TaskViewKey>('active')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [sortBy, setSortBy] = useState<TaskSortKey>('priority')
@@ -232,10 +294,6 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const [taskStatus, setTaskStatus] = useState<TeamTaskStatus>('todo')
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isDeletingTask, setIsDeletingTask] = useState(false)
-  const [statusUpdatingTaskId, setStatusUpdatingTaskId] = useState('')
-  const [assigneeUpdatingTaskId, setAssigneeUpdatingTaskId] = useState('')
-  const [todoSubmittingTaskId, setTodoSubmittingTaskId] = useState('')
-  const [todoUpdatingId, setTodoUpdatingId] = useState('')
   const [todoDrafts, setTodoDrafts] = useState<Record<string, string>>({})
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({})
   const [aiNotice, setAiNotice] = useState('')
@@ -243,14 +301,25 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const [isAiGenerationStarting, setIsAiGenerationStarting] = useState(false)
   const [aiAssignmentStatus, setAiAssignmentStatus] = useState<AiTaskAssignmentStatus | null>(null)
   const [isAiAssignmentStarting, setIsAiAssignmentStarting] = useState(false)
+  const [aiTodoStatuses, setAiTodoStatuses] = useState<Record<string, AiTodoGenerationStatus>>({})
+  const [aiTodoStartingTaskId, setAiTodoStartingTaskId] = useState('')
   const activeAiGenerationLogIdRef = useRef('')
   const activeAiAssignmentJobIdRef = useRef('')
+  const activeAiTodoJobIdsRef = useRef<Record<string, string>>({})
+  const loadedAiTodoStatusTaskIdsRef = useRef<Set<string>>(new Set())
+  const pendingChangesRef = useRef<PendingWorkspaceChanges>(emptyPendingChanges())
+  const draftTasksRef = useRef<TeamTaskWithTodos[]>([])
+  const serverTasksRef = useRef<TeamTaskWithTodos[]>([])
+  const isSavingRef = useRef(false)
+  const hasLoadedRef = useRef(false)
+  const restoredWorkspaceDraftRef = useRef(false)
 
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.user_id, member] as const)),
     [members],
   )
   const isLeader = currentUserRole === 'leader'
+  const workspaceDraftStorageKey = useMemo(() => `team-workspace-draft:${teamId}`, [teamId])
   const isEditing = editingTaskId.length > 0
   const aiGenerationJobStatus = aiGenerationStatus?.latest_log?.status ?? null
   const isAiGenerating = aiGenerationJobStatus === 'pending' || aiGenerationJobStatus === 'running'
@@ -314,34 +383,456 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     [currentUserId],
   )
 
-  const loadTasks = useCallback(async () => {
-    setIsLoading(true)
+  useEffect(() => {
+    pendingChangesRef.current = pendingChanges
+  }, [pendingChanges])
+
+  useEffect(() => {
+    draftTasksRef.current = draftTasks
+  }, [draftTasks])
+
+  useEffect(() => {
+    serverTasksRef.current = serverTasks
+  }, [serverTasks])
+
+  const isDirty = hasPendingChanges(pendingChanges)
+  const tasks = draftTasks
+
+  const clearWorkspaceDraftSnapshot = useCallback(() => {
+    sessionStorage.removeItem(workspaceDraftStorageKey)
+  }, [workspaceDraftStorageKey])
+
+  const persistWorkspaceDraftSnapshot = useCallback(
+    (snapshot?: TaskWorkspaceDraftSnapshot) => {
+      const nextSnapshot = snapshot ?? {
+        draftTasks: draftTasksRef.current,
+        pendingChanges: pendingChangesRef.current,
+      }
+
+      if (!hasPendingChanges(nextSnapshot.pendingChanges)) {
+        clearWorkspaceDraftSnapshot()
+        return
+      }
+
+      sessionStorage.setItem(workspaceDraftStorageKey, JSON.stringify(nextSnapshot))
+    },
+    [clearWorkspaceDraftSnapshot, workspaceDraftStorageKey],
+  )
+
+  const loadWorkspaceDraftSnapshot = useCallback((): TaskWorkspaceDraftSnapshot | null => {
+    const raw = sessionStorage.getItem(workspaceDraftStorageKey)
+    if (!raw) {
+      return null
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<TaskWorkspaceDraftSnapshot>
+      if (!parsed || !Array.isArray(parsed.draftTasks) || !parsed.pendingChanges) {
+        clearWorkspaceDraftSnapshot()
+        return null
+      }
+
+      const normalizedPendingChanges: PendingWorkspaceChanges = {
+        taskCreates: parsed.pendingChanges.taskCreates ?? {},
+        taskUpdates: parsed.pendingChanges.taskUpdates ?? {},
+        taskDeletes: parsed.pendingChanges.taskDeletes ?? [],
+        todoCreates: parsed.pendingChanges.todoCreates ?? {},
+        todoUpdates: parsed.pendingChanges.todoUpdates ?? {},
+      }
+
+      if (!hasPendingChanges(normalizedPendingChanges)) {
+        clearWorkspaceDraftSnapshot()
+        return null
+      }
+
+      return {
+        draftTasks: parsed.draftTasks as TeamTaskWithTodos[],
+        pendingChanges: normalizedPendingChanges,
+      }
+    } catch {
+      clearWorkspaceDraftSnapshot()
+      return null
+    }
+  }, [clearWorkspaceDraftSnapshot, workspaceDraftStorageKey])
+
+  const buildAssigneeProfile = useCallback(
+    (assigneeId: string | null) => membersById.get(assigneeId ?? '')?.profile ?? null,
+    [membersById],
+  )
+
+  const ensureExpandedTasks = useCallback((nextTasks: TeamTaskWithTodos[]) => {
+    setExpandedTasks((current) => {
+      const next = { ...current }
+      nextTasks.forEach((task) => {
+        if (!(task.id in next)) {
+          next[task.id] = false
+        }
+      })
+      return next
+    })
+  }, [])
+
+  const queuePendingChanges = useCallback(
+    (updater: (current: PendingWorkspaceChanges) => PendingWorkspaceChanges) => {
+      setPendingChanges((current) => {
+        const next = updater(current)
+        pendingChangesRef.current = next
+        persistWorkspaceDraftSnapshot({
+          draftTasks: draftTasksRef.current,
+          pendingChanges: next,
+        })
+        return next
+      })
+    },
+    [persistWorkspaceDraftSnapshot],
+  )
+
+  const applyDraftTasks = useCallback(
+    (updater: (current: TeamTaskWithTodos[]) => TeamTaskWithTodos[]) => {
+      setDraftTasks((current) => {
+        const next = updater(current)
+        draftTasksRef.current = next
+        ensureExpandedTasks(next)
+        return next
+      })
+    },
+    [ensureExpandedTasks],
+  )
+
+  const replaceTaskInList = useCallback((taskList: TeamTaskWithTodos[], nextTask: TeamTaskWithTodos) => {
+    const exists = taskList.some((task) => task.id === nextTask.id)
+    const merged = exists
+      ? taskList.map((task) => (task.id === nextTask.id ? nextTask : task))
+      : [...taskList, nextTask]
+
+    return [...merged].sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status.localeCompare(b.status)
+      }
+      if (a.position !== b.position) {
+        return a.position - b.position
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+  }, [])
+
+  const mergeTaskSnapshotIntoDraft = useCallback((freshTask: TeamTaskWithTodos) => {
+    setServerTasks((current) => replaceTaskInList(current, freshTask))
+    setDraftTasks((current) => {
+      const pending = pendingChangesRef.current
+      const nextTasks = current.map((task) => {
+        if (task.id !== freshTask.id) {
+          return task
+        }
+
+        const hasPendingTaskFields = Boolean(pending.taskCreates[task.id] || pending.taskUpdates[task.id])
+        const currentTodoIds = new Set(task.todos.map((todo) => todo.id))
+        const nextTodos = freshTask.todos.map((freshTodo) => {
+          const existingTodo = task.todos.find((todo) => todo.id === freshTodo.id)
+          if (!existingTodo) {
+            return freshTodo
+          }
+
+          const hasPendingTodoFields = Boolean(pending.todoCreates[freshTodo.id] || pending.todoUpdates[freshTodo.id])
+          return hasPendingTodoFields ? existingTodo : freshTodo
+        })
+
+        task.todos.forEach((todo) => {
+          if (!currentTodoIds.has(todo.id)) {
+            return
+          }
+          if (!freshTask.todos.some((freshTodo) => freshTodo.id === todo.id)) {
+            nextTodos.push(todo)
+          }
+        })
+
+        const mergedTask = hasPendingTaskFields
+          ? {
+              ...freshTask,
+              title: task.title,
+              description: task.description,
+              priority: task.priority,
+              assignee_id: task.assignee_id,
+              assignee: task.assignee,
+              due_date: task.due_date,
+              status: task.status,
+              completed_at: task.completed_at,
+            }
+          : freshTask
+
+        return {
+          ...mergedTask,
+          todos: [...nextTodos].sort((a, b) => {
+            if (a.position !== b.position) {
+              return a.position - b.position
+            }
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          }),
+        }
+      })
+
+      ensureExpandedTasks(nextTasks)
+      return nextTasks
+    })
+  }, [ensureExpandedTasks, replaceTaskInList])
+
+  const mergeCreatedTodosIntoTask = useCallback((taskId: string, createdTodos: TeamTodoRecord[]) => {
+    if (createdTodos.length === 0) {
+      return
+    }
+
+    console.log('[AI Todo] mergeCreatedTodosIntoTask', {
+      taskId,
+      createdTodos,
+    })
+
+    const mergeTodos = (taskList: TeamTaskWithTodos[]) =>
+      taskList.map((task) => {
+        if (task.id !== taskId) {
+          return task
+        }
+
+        const existingIds = new Set(task.todos.map((todo) => todo.id))
+        const nextTodos = [...task.todos]
+        createdTodos.forEach((todo) => {
+          if (!existingIds.has(todo.id)) {
+            nextTodos.push(todo)
+          }
+        })
+
+        return {
+          ...task,
+          todos: [...nextTodos].sort((a, b) => {
+            if (a.position !== b.position) {
+              return a.position - b.position
+            }
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          }),
+        }
+      })
+
+    setServerTasks((current) => mergeTodos(current))
+    setDraftTasks((current) => {
+      const nextTasks = mergeTodos(current)
+      ensureExpandedTasks(nextTasks)
+      return nextTasks
+    })
+  }, [ensureExpandedTasks])
+
+  const refreshTaskFromServerWithRetry = useCallback(async (
+    taskId: string,
+    options?: { minimumTodoCount?: number },
+  ) => {
+    for (let attempt = 0; attempt <= aiTodoRefreshRetryCount; attempt += 1) {
+      const freshTask = await fetchTaskWorkspace(taskId)
+      console.log('[AI Todo] refreshTaskFromServerWithRetry', {
+        taskId,
+        attempt,
+        minimumTodoCount: options?.minimumTodoCount ?? null,
+        freshTask,
+      })
+      if (freshTask) {
+        mergeTaskSnapshotIntoDraft(freshTask)
+        if (!options?.minimumTodoCount || freshTask.todos.length >= options.minimumTodoCount) {
+          return
+        }
+      }
+
+      if (attempt < aiTodoRefreshRetryCount) {
+        await new Promise((resolve) => window.setTimeout(resolve, aiTodoRefreshRetryDelayMs))
+      }
+    }
+  }, [mergeTaskSnapshotIntoDraft])
+
+  const loadTasks = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoading(true)
+    }
     setErrorMessage('')
 
     try {
       const result = await fetchTeamTasksWorkspace(teamId)
-      setTasks(result)
-      setExpandedTasks((current) => {
-        const next = { ...current }
-        result.forEach((task) => {
-          if (!(task.id in next)) {
-            next[task.id] = false
-          }
-        })
-        return next
+      setServerTasks(result)
+      serverTasksRef.current = result
+      ensureExpandedTasks(result)
+      setDraftTasks((current) => {
+        const restoredSnapshot =
+          !options?.force && !restoredWorkspaceDraftRef.current ? loadWorkspaceDraftSnapshot() : null
+
+        if (restoredSnapshot) {
+          restoredWorkspaceDraftRef.current = true
+          pendingChangesRef.current = restoredSnapshot.pendingChanges
+          setPendingChanges(restoredSnapshot.pendingChanges)
+          draftTasksRef.current = restoredSnapshot.draftTasks
+          ensureExpandedTasks(restoredSnapshot.draftTasks)
+          setSaveMessage('저장되지 않은 워크스페이스 변경사항을 복구했습니다.')
+          return restoredSnapshot.draftTasks
+        }
+
+        if (!options?.force && hasPendingChanges(pendingChangesRef.current)) {
+          return current
+        }
+        draftTasksRef.current = result
+        return result
       })
+      hasLoadedRef.current = true
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : '업무 데이터를 불러오지 못했습니다.',
       )
     } finally {
-      setIsLoading(false)
+      if (!options?.silent) {
+        setIsLoading(false)
+      }
     }
-  }, [teamId])
+  }, [ensureExpandedTasks, loadWorkspaceDraftSnapshot, teamId])
 
   useEffect(() => {
     void loadTasks()
   }, [loadTasks])
+
+  useEffect(() => {
+    loadedAiTodoStatusTaskIdsRef.current = new Set()
+    activeAiTodoJobIdsRef.current = {}
+    restoredWorkspaceDraftRef.current = false
+    setAiTodoStatuses({})
+  }, [teamId])
+
+  const flushPendingChanges = useCallback(async (trigger: SaveTrigger = 'manual') => {
+    const snapshot = pendingChangesRef.current
+    if (!hasPendingChanges(snapshot) || isSavingRef.current) {
+      return true
+    }
+
+    isSavingRef.current = true
+    setIsSavingChanges(true)
+    setSaveMessage(trigger === 'manual' ? '변경사항을 저장하는 중입니다...' : '백그라운드에서 저장 중입니다...')
+    setErrorMessage('')
+
+    try {
+      const result = await saveWorkspaceChanges({
+        taskCreates: Object.values(snapshot.taskCreates),
+        taskUpdates: Object.values(snapshot.taskUpdates),
+        taskDeletes: snapshot.taskDeletes,
+        todoCreates: Object.values(snapshot.todoCreates),
+        todoUpdates: Object.values(snapshot.todoUpdates),
+      })
+
+      const createdTaskMap = new Map(result.createdTasks.map((entry) => [entry.clientId, entry.task] as const))
+      const updatedTaskMap = new Map(result.updatedTasks.map((task) => [task.id, task] as const))
+      const createdTodoMap = new Map(result.createdTodos.map((entry) => [entry.clientId, entry.todo] as const))
+      const updatedTodoMap = new Map(result.updatedTodos.map((todo) => [todo.id, todo] as const))
+
+      let nextServerSnapshot: TeamTaskWithTodos[] = []
+      setDraftTasks((current) => {
+        const nextTasks = current
+          .filter((task) => !result.deletedTaskIds.includes(task.id))
+          .map((task) => {
+            const createdTask = createdTaskMap.get(task.id)
+            const updatedTask = updatedTaskMap.get(task.id)
+            const baseTask: TeamTaskWithTodos = createdTask
+              ? { ...createdTask, assignee: buildAssigneeProfile(createdTask.assignee_id), todos: task.todos }
+              : updatedTask
+                ? { ...task, ...updatedTask, assignee: buildAssigneeProfile(updatedTask.assignee_id) }
+                : task
+
+            const nextTodos = baseTask.todos.map((todo) => {
+              const createdTodo = createdTodoMap.get(todo.id)
+              if (createdTodo) {
+                return createdTodo
+              }
+
+              const updatedTodo = updatedTodoMap.get(todo.id)
+              return updatedTodo ? { ...todo, ...updatedTodo } : todo
+            })
+
+            return {
+              ...baseTask,
+              todos: [...nextTodos].sort((a, b) => a.position - b.position),
+            }
+          })
+
+        nextServerSnapshot = nextTasks
+        draftTasksRef.current = nextTasks
+        ensureExpandedTasks(nextTasks)
+        return nextTasks
+      })
+      setServerTasks(nextServerSnapshot)
+      serverTasksRef.current = nextServerSnapshot
+
+      const cleared = emptyPendingChanges()
+      pendingChangesRef.current = cleared
+      setPendingChanges(cleared)
+      clearWorkspaceDraftSnapshot()
+      setSaveMessage('모든 변경사항이 저장되었습니다.')
+      return true
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '변경사항을 저장하지 못했습니다.')
+      setSaveMessage('')
+      return false
+    } finally {
+      isSavingRef.current = false
+      setIsSavingChanges(false)
+    }
+  }, [buildAssigneeProfile, clearWorkspaceDraftSnapshot, ensureExpandedTasks])
+
+  useEffect(() => {
+    if (!isDirty || isSavingChanges) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void flushPendingChanges('debounce')
+    }, autosaveDelayMs)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [flushPendingChanges, isDirty, isSavingChanges])
+
+  useEffect(() => {
+    if (!isDirty && !isSavingChanges) {
+      return
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      persistWorkspaceDraftSnapshot()
+      void flushPendingChanges('unmount')
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    const handlePageHide = () => {
+      persistWorkspaceDraftSnapshot()
+      void flushPendingChanges('unmount')
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistWorkspaceDraftSnapshot()
+        void flushPendingChanges('visibilitychange')
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('pagehide', handlePageHide)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('pagehide', handlePageHide)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [flushPendingChanges, isDirty, isSavingChanges, persistWorkspaceDraftSnapshot])
+
+  useEffect(() => {
+    return () => {
+      if (hasPendingChanges(pendingChangesRef.current)) {
+        persistWorkspaceDraftSnapshot()
+        void flushPendingChanges('unmount')
+      }
+    }
+  }, [flushPendingChanges, persistWorkspaceDraftSnapshot])
 
   const syncAiGenerationStatus = useCallback((nextStatus: AiTaskGenerationStatus) => {
     setAiGenerationStatus(nextStatus)
@@ -364,6 +855,53 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     }
   }, [])
 
+  const syncAiTodoStatus = useCallback((taskId: string, nextStatus: AiTodoGenerationStatus) => {
+    console.log('[AI Todo] syncAiTodoStatus', { taskId, nextStatus })
+    setAiTodoStatuses((current) => ({ ...current, [taskId]: nextStatus }))
+    if (nextStatus.current_job_id) {
+      activeAiTodoJobIdsRef.current = { ...activeAiTodoJobIdsRef.current, [taskId]: nextStatus.current_job_id }
+      return
+    }
+
+    const latestLog = nextStatus.latest_log
+    if (latestLog && (latestLog.status === 'pending' || latestLog.status === 'running')) {
+      activeAiTodoJobIdsRef.current = { ...activeAiTodoJobIdsRef.current, [taskId]: latestLog.id }
+    }
+  }, [])
+
+  const mergeAiTodoStatuses = useCallback((incomingStatuses: Record<string, AiTodoGenerationStatus>) => {
+    setAiTodoStatuses((current) => {
+      const nextStatuses = { ...current }
+
+      Object.entries(incomingStatuses).forEach(([taskId, incomingStatus]) => {
+        const currentStatus = current[taskId]
+        const hasActiveLocalJob =
+          currentStatus &&
+          (currentStatus.status === 'pending' || currentStatus.status === 'running') &&
+          Boolean(activeAiTodoJobIdsRef.current[taskId])
+
+        const incomingIsOlderOrIdle =
+          incomingStatus.status === 'idle' ||
+          incomingStatus.status === 'cooldown' ||
+          (!incomingStatus.current_job_id &&
+            incomingStatus.latest_log?.id !== activeAiTodoJobIdsRef.current[taskId])
+
+        if (hasActiveLocalJob && incomingIsOlderOrIdle) {
+          console.log('[AI Todo] ignore stale batch status', {
+            taskId,
+            currentStatus,
+            incomingStatus,
+          })
+          return
+        }
+
+        nextStatuses[taskId] = incomingStatus
+      })
+
+      return nextStatuses
+    })
+  }, [])
+
   const loadAiStatus = useCallback(async () => {
     try {
       const result = await fetchAiTaskGenerationStatus(teamId)
@@ -382,6 +920,40 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     }
   }, [syncAiAssignmentStatus, teamId])
 
+  const loadAiTodoStatus = useCallback(async (taskId: string) => {
+    console.log('[AI Todo] requesting single status', { taskId })
+    try {
+      const result = await fetchAiTodoGenerationStatus(taskId)
+      console.log('[AI Todo] single status payload', { taskId, result })
+      syncAiTodoStatus(taskId, result)
+    } catch (error) {
+      console.error('[AI Todo] single status error', { taskId, error })
+      throw error
+    }
+  }, [syncAiTodoStatus])
+
+  const loadAiTodoStatuses = useCallback(async (taskIds: string[]) => {
+    if (taskIds.length === 0) {
+      return
+    }
+
+    const statuses = await fetchAiTodoGenerationStatuses(teamId, taskIds)
+    console.log('[AI Todo] batch status payload', { teamId, taskIds, statuses })
+    const nextActiveJobs = { ...activeAiTodoJobIdsRef.current }
+
+    Object.entries(statuses).forEach(([taskId, status]) => {
+      if (status.current_job_id) {
+        nextActiveJobs[taskId] = status.current_job_id
+      } else if (status.latest_log?.status === 'pending' || status.latest_log?.status === 'running') {
+        nextActiveJobs[taskId] = status.latest_log.id
+      }
+    })
+
+    activeAiTodoJobIdsRef.current = nextActiveJobs
+    mergeAiTodoStatuses(statuses)
+    taskIds.forEach((taskId) => loadedAiTodoStatusTaskIdsRef.current.add(taskId))
+  }, [mergeAiTodoStatuses, teamId])
+
   useEffect(() => {
     void loadAiStatus()
   }, [loadAiStatus])
@@ -389,6 +961,49 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   useEffect(() => {
     void loadAiAssignmentStatus()
   }, [loadAiAssignmentStatus])
+
+  const persistedTaskIds = useMemo(
+    () => tasks.map((task) => task.id).filter((taskId) => !taskId.startsWith('task-draft-')),
+    [tasks],
+  )
+
+  const persistedTaskIdsKey = useMemo(() => [...persistedTaskIds].sort().join('|'), [persistedTaskIds])
+  const runningAiTodoTaskIds = useMemo(
+    () =>
+      Object.entries(aiTodoStatuses)
+        .filter(([, status]) => status.status === 'pending' || status.status === 'running')
+        .map(([taskId]) => taskId)
+        .sort(),
+    [aiTodoStatuses],
+  )
+  const runningAiTodoTaskIdsKey = useMemo(() => runningAiTodoTaskIds.join('|'), [runningAiTodoTaskIds])
+
+  useEffect(() => {
+    if (!isLeader || persistedTaskIds.length === 0) return
+
+    const missingTaskIds = persistedTaskIds.filter(
+      (taskId) => !loadedAiTodoStatusTaskIdsRef.current.has(taskId),
+    )
+    if (missingTaskIds.length === 0) {
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        await loadAiTodoStatuses(missingTaskIds)
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMessage(error instanceof Error ? error.message : 'AI Todo 상태를 불러오지 못했습니다.')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isLeader, loadAiTodoStatuses, persistedTaskIds, persistedTaskIdsKey])
 
   useEffect(() => {
     if (!isAiGenerating) return
@@ -413,6 +1028,23 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       window.clearInterval(interval)
     }
   }, [isAiAssigning, loadAiAssignmentStatus])
+
+  useEffect(() => {
+    console.log('[AI Todo] polling candidates', {
+      runningTaskIds: runningAiTodoTaskIds,
+    })
+
+    if (runningAiTodoTaskIds.length === 0) return
+
+    const interval = window.setInterval(() => {
+      console.log('[AI Todo] polling tick', { runningTaskIds: runningAiTodoTaskIds })
+      void Promise.allSettled(runningAiTodoTaskIds.map((taskId) => loadAiTodoStatus(taskId)))
+    }, 3000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [loadAiTodoStatus, runningAiTodoTaskIds, runningAiTodoTaskIdsKey])
 
   useEffect(() => {
     if (!aiGenerationStatus?.cooldown_until) return
@@ -479,6 +1111,56 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }, [aiAssignmentStatus?.cooldown_until])
 
   useEffect(() => {
+    const hasCooldown = Object.values(aiTodoStatuses).some((status) => Boolean(status.cooldown_until))
+    if (!hasCooldown) return
+
+    const interval = window.setInterval(() => {
+      setAiTodoStatuses((current) => {
+        let changed = false
+        const nextEntries = Object.entries(current).map(([taskId, status]) => {
+          if (!status.cooldown_until) return [taskId, status] as const
+
+          const remainingSeconds = Math.max(
+            Math.ceil((new Date(status.cooldown_until).getTime() - Date.now()) / 1000),
+            0,
+          )
+          const nextStatus =
+            status.status === 'pending' || status.status === 'running'
+              ? status.status
+              : remainingSeconds > 0
+                ? 'cooldown'
+                : status.latest_log?.status === 'failed'
+                  ? 'failed'
+                  : status.latest_log?.status === 'completed'
+                    ? 'completed'
+                    : 'idle'
+
+          if (remainingSeconds === status.remaining_seconds && nextStatus === status.status) {
+            return [taskId, status] as const
+          }
+
+          changed = true
+          return [
+            taskId,
+            {
+              ...status,
+              status: nextStatus,
+              remaining_seconds: remainingSeconds,
+            },
+          ] as const
+        })
+
+        if (!changed) return current
+        return Object.fromEntries(nextEntries)
+      })
+    }, 1000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [aiTodoStatuses])
+
+  useEffect(() => {
     const latestLog = aiGenerationStatus?.latest_log
     if (!latestLog) return
     if (latestLog.id !== activeAiGenerationLogIdRef.current) return
@@ -490,7 +1172,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           ? `AI가 ${latestLog.created_count}개의 Task를 추가했어요.`
           : 'AI가 중복을 제외한 결과를 검토했지만 새로 추가할 Task는 없었어요.',
       )
-      void loadTasks()
+      void loadTasks({ silent: true })
       return
     }
 
@@ -508,7 +1190,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     if (latestLog.status === 'completed') {
       activeAiAssignmentJobIdRef.current = ''
       if (latestLog.assigned_count > 0) {
-        void loadTasks()
+        void loadTasks({ silent: true })
       }
       return
     }
@@ -520,8 +1202,92 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }, [aiAssignmentStatus, loadTasks])
 
   useEffect(() => {
+    const finishedTaskIds: string[] = []
+    let latestError = ''
+    let latestNotice = ''
+
+    Object.entries(aiTodoStatuses).forEach(([taskId, status]) => {
+      const latestLog = status.latest_log
+      if (!latestLog) return
+      if (latestLog.id !== activeAiTodoJobIdsRef.current[taskId]) return
+
+      if (latestLog.status === 'completed') {
+        console.log('[AI Todo] completed status detected', {
+          taskId,
+          status,
+          currentTask: tasks.find((task) => task.id === taskId) ?? null,
+        })
+        finishedTaskIds.push(taskId)
+        if (latestLog.created_count > 0) {
+          if (status.created_todos.length > 0) {
+            mergeCreatedTodosIntoTask(taskId, status.created_todos)
+          }
+          latestNotice = `AI가 "${tasks.find((task) => task.id === taskId)?.title ?? '선택한 Task'}"에 ${latestLog.created_count}개의 Todo를 추가했어요.`
+        } else {
+          latestNotice = 'AI가 중복을 제외하고 검토했지만 새로 추가할 Todo가 없었어요.'
+        }
+      }
+
+      if (latestLog.status === 'failed') {
+        finishedTaskIds.push(taskId)
+        latestError = latestLog.error_message || 'AI Todo 생성에 실패했습니다.'
+      }
+    })
+
+    if (finishedTaskIds.length === 0) return
+
+    const nextActiveJobs = { ...activeAiTodoJobIdsRef.current }
+    finishedTaskIds.forEach((taskId) => {
+      delete nextActiveJobs[taskId]
+    })
+    activeAiTodoJobIdsRef.current = nextActiveJobs
+
+    if (latestNotice) {
+      setAiNotice(latestNotice)
+    }
+    if (latestError) {
+      setErrorMessage(latestError)
+    }
+    const completedTasks = finishedTaskIds
+      .map((taskId) => ({
+        taskId,
+        createdCount: aiTodoStatuses[taskId]?.latest_log?.created_count ?? 0,
+      }))
+      .filter((item) => item.createdCount > 0)
+    if (completedTasks.length > 0) {
+      if (!hasPendingChanges(pendingChangesRef.current) && !isSavingRef.current) {
+        void loadTasks({ silent: true, force: true })
+      } else {
+        void Promise.allSettled(
+          completedTasks.map(({ taskId, createdCount }) => {
+            const currentTodoCount = tasks.find((task) => task.id === taskId)?.todos.length ?? 0
+            return refreshTaskFromServerWithRetry(taskId, {
+              minimumTodoCount: currentTodoCount + createdCount,
+            })
+          }),
+        )
+      }
+    }
+  }, [aiTodoStatuses, loadTasks, mergeCreatedTodosIntoTask, refreshTaskFromServerWithRetry, tasks])
+
+  useEffect(() => {
+    const scheduleSilentReload = () => {
+      if (hasPendingChanges(pendingChangesRef.current) || isSavingRef.current || !hasLoadedRef.current) {
+        return
+      }
+      void loadTasks({ silent: true })
+    }
+
+    const syncTaskFromTodoChange = (payload: { new?: { task_id?: string }; old?: { task_id?: string } }) => {
+      const taskId = payload.new?.task_id ?? payload.old?.task_id
+      if (!taskId) {
+        return
+      }
+      void refreshTaskFromServerWithRetry(taskId)
+    }
+
     const tasksChannel = supabase
-      .channel(`team-tasks-${teamId}`)
+      .channel(`team-workspace-${teamId}`)
       .on(
         'postgres_changes',
         {
@@ -530,16 +1296,23 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           table: 'tasks',
           filter: `team_id=eq.${teamId}`,
         },
-        () => {
-          void loadTasks()
+        scheduleSilentReload,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'todos',
         },
+        syncTaskFromTodoChange,
       )
       .subscribe()
 
     return () => {
       void supabase.removeChannel(tasksChannel)
     }
-  }, [loadTasks, teamId])
+  }, [loadTasks, refreshTaskFromServerWithRetry, teamId])
 
   const summary = useMemo(() => {
     const activeTasks = tasks.filter((task) => isActiveTask(task.status))
@@ -623,40 +1396,107 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
     try {
       const dueDateIso = taskDueDate ? new Date(`${taskDueDate}T23:59:00`).toISOString() : null
+      const nextAssigneeId = taskAssigneeId || null
 
       if (isEditing) {
-        await updateTask({
-          taskId: editingTaskId,
-          title: trimmedTitle,
-          description: taskDescription,
-          priority: taskPriority,
-          assigneeId: taskAssigneeId || null,
-          dueDate: dueDateIso,
-          status: taskStatus,
+        applyDraftTasks((current) =>
+          current.map((task) =>
+            task.id === editingTaskId
+              ? {
+                  ...task,
+                  title: trimmedTitle,
+                  description: taskDescription.trim() || null,
+                  priority: taskPriority,
+                  assignee_id: nextAssigneeId,
+                  assignee: buildAssigneeProfile(nextAssigneeId),
+                  due_date: dueDateIso,
+                  status: taskStatus,
+                  completed_at: taskStatus === 'done' ? task.completed_at ?? new Date().toISOString() : null,
+                }
+              : task,
+          ),
+        )
+
+        queuePendingChanges((current) => {
+          if (current.taskCreates[editingTaskId]) {
+            return {
+              ...current,
+              taskCreates: {
+                ...current.taskCreates,
+                [editingTaskId]: {
+                  ...current.taskCreates[editingTaskId],
+                  title: trimmedTitle,
+                  description: taskDescription,
+                  priority: taskPriority,
+                  assigneeId: nextAssigneeId,
+                  dueDate: dueDateIso,
+                  status: taskStatus,
+                },
+              },
+            }
+          }
+
+          return {
+            ...current,
+            taskUpdates: {
+              ...current.taskUpdates,
+              [editingTaskId]: mergeTaskUpdate(current.taskUpdates[editingTaskId], {
+                taskId: editingTaskId,
+                title: trimmedTitle,
+                description: taskDescription,
+                priority: taskPriority,
+                assigneeId: nextAssigneeId,
+                dueDate: dueDateIso,
+                status: taskStatus,
+              }),
+            },
+          }
         })
       } else {
         const nextPosition = tasks.length > 0 ? Math.max(...tasks.map((task) => task.position)) + 1 : 0
-        await createTask({
-          teamId,
+        const clientId = createClientId('task')
+        const now = new Date().toISOString()
+        const nextTask: TeamTaskWithTodos = {
+          id: clientId,
+          team_id: teamId,
           title: trimmedTitle,
-          description: taskDescription,
+          description: taskDescription.trim() || null,
+          status: taskStatus,
           priority: taskPriority,
-          assigneeId: taskAssigneeId || null,
-          dueDate: dueDateIso,
-          createdBy: currentUserId,
+          assignee_id: nextAssigneeId,
+          assignee: buildAssigneeProfile(nextAssigneeId),
+          created_by: currentUserId,
+          due_date: dueDateIso,
+          completed_at: taskStatus === 'done' ? now : null,
           position: nextPosition,
-        })
+          created_at: now,
+          updated_at: now,
+          todos: [],
+        }
+
+        applyDraftTasks((current) => replaceTaskInList(current, nextTask))
+        queuePendingChanges((current) => ({
+          ...current,
+          taskCreates: {
+            ...current.taskCreates,
+            [clientId]: {
+              clientId,
+              teamId,
+              title: trimmedTitle,
+              description: taskDescription,
+              priority: taskPriority,
+              assigneeId: nextAssigneeId,
+              dueDate: dueDateIso,
+              createdBy: currentUserId,
+              position: nextPosition,
+              status: taskStatus,
+            },
+          },
+        }))
       }
 
-      setTaskTitle('')
-      setTaskDescription('')
-      setTaskPriority('medium')
-      setTaskAssigneeId('')
-      setTaskDueDate('')
-      setTaskStatus('todo')
-      setEditingTaskId('')
-      setShowCreateForm(false)
-      await loadTasks()
+      resetTaskForm()
+      setSaveMessage('변경사항이 로컬에 반영되었습니다. 잠시 후 자동 저장됩니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : isEditing ? 'Task를 수정하지 못했습니다.' : 'Task를 생성하지 못했습니다.')
     } finally {
@@ -697,9 +1537,39 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     setErrorMessage('')
 
     try {
-      await deleteTask(editingTaskId)
+      applyDraftTasks((current) => current.filter((task) => task.id !== editingTaskId))
+      queuePendingChanges((current) => {
+        const taskToDelete = tasks.find((task) => task.id === editingTaskId) ?? null
+        const nextTaskCreates = { ...current.taskCreates }
+        const nextTaskUpdates = { ...current.taskUpdates }
+        const nextTodoCreates = { ...current.todoCreates }
+        const nextTodoUpdates = { ...current.todoUpdates }
+
+        delete nextTaskCreates[editingTaskId]
+        delete nextTaskUpdates[editingTaskId]
+
+        Object.entries(nextTodoCreates).forEach(([todoId, todo]) => {
+          if (todo.taskId === editingTaskId) {
+            delete nextTodoCreates[todoId]
+          }
+        })
+
+        taskToDelete?.todos.forEach((todo) => {
+          delete nextTodoUpdates[todo.id]
+        })
+
+        return {
+          taskCreates: nextTaskCreates,
+          taskUpdates: nextTaskUpdates,
+          taskDeletes: current.taskCreates[editingTaskId]
+            ? current.taskDeletes
+            : [...new Set([...current.taskDeletes, editingTaskId])],
+          todoCreates: nextTodoCreates,
+          todoUpdates: nextTodoUpdates,
+        }
+      })
       resetTaskForm()
-      await loadTasks()
+      setSaveMessage('Task 삭제가 로컬에 반영되었습니다. 저장 시 서버에도 반영됩니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Task를 삭제하지 못했습니다.')
     } finally {
@@ -713,16 +1583,49 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       return
     }
 
-    setAssigneeUpdatingTaskId(taskId)
     setErrorMessage('')
 
     try {
-      await updateTaskAssignee(taskId, assigneeId || null)
-      await loadTasks()
+      const nextAssigneeId = assigneeId || null
+      applyDraftTasks((current) =>
+        current.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                assignee_id: nextAssigneeId,
+                assignee: buildAssigneeProfile(nextAssigneeId),
+              }
+            : task,
+        ),
+      )
+      queuePendingChanges((current) => {
+        if (current.taskCreates[taskId]) {
+          return {
+            ...current,
+            taskCreates: {
+              ...current.taskCreates,
+              [taskId]: {
+                ...current.taskCreates[taskId],
+                assigneeId: nextAssigneeId,
+              },
+            },
+          }
+        }
+
+        return {
+          ...current,
+          taskUpdates: {
+            ...current.taskUpdates,
+            [taskId]: mergeTaskUpdate(current.taskUpdates[taskId], {
+              taskId,
+              assigneeId: nextAssigneeId,
+            }),
+          },
+        }
+      })
+      setSaveMessage('담당자 변경이 로컬에 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '담당자를 변경하지 못했습니다.')
-    } finally {
-      setAssigneeUpdatingTaskId('')
     }
   }
 
@@ -743,26 +1646,53 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     const content = (todoDrafts[taskId] ?? '').trim()
     if (!content) return
 
-    setTodoSubmittingTaskId(taskId)
     setErrorMessage('')
 
     try {
       const nextPosition =
         targetTask.todos.length > 0 ? Math.max(...targetTask.todos.map((todo) => todo.position)) + 1 : 0
-
-      await createTodo({
-        taskId,
+      const clientId = createClientId('todo')
+      const now = new Date().toISOString()
+      const nextTodo: TeamTodoRecord = {
+        id: clientId,
+        task_id: taskId,
         content,
-        createdBy: currentUserId,
+        is_done: false,
         position: nextPosition,
-      })
+        created_by: currentUserId,
+        created_at: now,
+        updated_at: now,
+      }
+
+      applyDraftTasks((current) =>
+        current.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                todos: [...task.todos, nextTodo].sort((a, b) => a.position - b.position),
+              }
+            : task,
+        ),
+      )
+      queuePendingChanges((current) => ({
+        ...current,
+        todoCreates: {
+          ...current.todoCreates,
+          [clientId]: {
+            clientId,
+            taskId,
+            content,
+            createdBy: currentUserId,
+            position: nextPosition,
+            isDone: false,
+          },
+        },
+      }))
 
       setTodoDrafts((current) => ({ ...current, [taskId]: '' }))
-      await loadTasks()
+      setSaveMessage('Todo가 로컬에 추가되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Todo를 추가하지 못했습니다.')
-    } finally {
-      setTodoSubmittingTaskId('')
     }
   }
 
@@ -773,36 +1703,106 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       return
     }
 
-    setTodoUpdatingId(todoId)
     setErrorMessage('')
 
     try {
-      await updateTodoDone(todoId, nextValue)
-      await loadTasks()
+      applyDraftTasks((current) =>
+        current.map((task) =>
+          task.id === ownerTask.id
+            ? {
+                ...task,
+                todos: task.todos.map((todo) =>
+                  todo.id === todoId
+                    ? {
+                        ...todo,
+                        is_done: nextValue,
+                      }
+                    : todo,
+                ),
+              }
+            : task,
+        ),
+      )
+      queuePendingChanges((current) => {
+        if (current.todoCreates[todoId]) {
+          return {
+            ...current,
+            todoCreates: {
+              ...current.todoCreates,
+              [todoId]: {
+                ...current.todoCreates[todoId],
+                isDone: nextValue,
+              },
+            },
+          }
+        }
+
+        return {
+          ...current,
+          todoUpdates: {
+            ...current.todoUpdates,
+            [todoId]: mergeTodoUpdate(current.todoUpdates[todoId], {
+              todoId,
+              isDone: nextValue,
+            }),
+          },
+        }
+      })
+      setSaveMessage('Todo 상태가 로컬에 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Todo 상태를 바꾸지 못했습니다.')
-    } finally {
-      setTodoUpdatingId('')
     }
   }
 
   async function handleTaskStatusChange(taskId: string, status: TeamTaskStatus) {
     try {
-      const latestTask = await fetchTaskSnapshot(taskId)
-      if (!latestTask || !canChangeTaskStatus({ ...latestTask, assignee: null, todos: [] })) {
-        await loadTasks()
+      const latestTask = tasks.find((task) => task.id === taskId)
+      if (!latestTask || !canChangeTaskStatus(latestTask)) {
         setErrorMessage('상태 변경은 담당 미지정 Task는 모두 가능하고, 담당자가 지정되면 해당 담당자만 할 수 있습니다.')
         return
       }
 
-      setStatusUpdatingTaskId(taskId)
       setErrorMessage('')
-      await updateTaskStatus(taskId, status)
-      await loadTasks()
+      const completedAt = status === 'done' ? latestTask.completed_at ?? new Date().toISOString() : null
+      applyDraftTasks((current) =>
+        current.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status,
+                completed_at: completedAt,
+              }
+            : task,
+        ),
+      )
+      queuePendingChanges((current) => {
+        if (current.taskCreates[taskId]) {
+          return {
+            ...current,
+            taskCreates: {
+              ...current.taskCreates,
+              [taskId]: {
+                ...current.taskCreates[taskId],
+                status,
+              },
+            },
+          }
+        }
+
+        return {
+          ...current,
+          taskUpdates: {
+            ...current.taskUpdates,
+            [taskId]: mergeTaskUpdate(current.taskUpdates[taskId], {
+              taskId,
+              status,
+            }),
+          },
+        }
+      })
+      setSaveMessage('Task 상태가 로컬에 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Task 상태를 변경하지 못했습니다.')
-    } finally {
-      setStatusUpdatingTaskId('')
     }
   }
 
@@ -856,10 +1856,72 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
   function handleRecommendTodos(taskId: string) {
     const targetTask = tasks.find((task) => task.id === taskId)
-    if (!targetTask || !canManageTodos(targetTask)) return
-    // TODO: AI todo recommendation API가 연결되면 taskId 문맥 기준의 세부 Todo를 생성합니다.
-    const taskTitleLabel = targetTask.title || '선택한 Task'
-    setAiNotice(`"${taskTitleLabel}" 기준 AI Todo 추천은 준비만 되어 있습니다. 나중에 API를 연결하면 바로 붙일 수 있게 핸들러를 분리해두었습니다.`)
+    const taskStatus = aiTodoStatuses[taskId]
+    const isBusy =
+      aiTodoStartingTaskId === taskId ||
+      taskStatus?.status === 'pending' ||
+      taskStatus?.status === 'running' ||
+      (taskStatus?.status === 'cooldown' && (taskStatus.remaining_seconds ?? 0) > 0)
+
+    if (!targetTask || !isLeader || !currentUserId || isBusy) return
+
+    void (async () => {
+      setAiTodoStartingTaskId(taskId)
+      setErrorMessage('')
+
+      try {
+        const result = await startAiTodoGeneration({
+          taskId,
+          requesterProfileId: currentUserId,
+        })
+        console.log('[AI Todo] start payload', { taskId, result })
+
+        const nextActiveJobIds = { ...activeAiTodoJobIdsRef.current }
+        delete nextActiveJobIds[taskId]
+        activeAiTodoJobIdsRef.current = nextActiveJobIds
+
+        syncAiTodoStatus(taskId, {
+          status: result.status,
+          cooldown_until: result.cooldown_until,
+          remaining_seconds: result.remaining_seconds,
+          error_message: null,
+          created_count: result.created_count,
+          last_run_at: result.latest_log.started_at,
+          current_job_id: null,
+          latest_log: result.latest_log,
+          created_todos: result.created_todos,
+        })
+
+        if (result.created_todos.length > 0) {
+          mergeCreatedTodosIntoTask(taskId, result.created_todos)
+          setAiNotice(`AI가 "${targetTask.title}"에 ${result.created_todos.length}개의 Todo를 추가했어요.`)
+        } else {
+          setAiNotice('AI가 중복을 제외하고 검토했지만 새로 추가할 Todo가 없었어요.')
+        }
+      } catch (error) {
+        console.error('[AI Todo] start error payload', { taskId, error })
+        const nextActiveJobIds = { ...activeAiTodoJobIdsRef.current }
+        delete nextActiveJobIds[taskId]
+        activeAiTodoJobIdsRef.current = nextActiveJobIds
+        if (error instanceof AiTodoGenerationApiError && error.payload) {
+          syncAiTodoStatus(taskId, {
+            status: error.payload.status ?? 'failed',
+            cooldown_until: error.payload.cooldown_until ?? null,
+            remaining_seconds: error.payload.remaining_seconds ?? 0,
+            error_message: error.payload.error_message ?? error.message,
+            created_count: error.payload.created_count ?? 0,
+            last_run_at: error.payload.last_run_at ?? null,
+            current_job_id: error.payload.current_job_id ?? null,
+            latest_log: error.payload.latest_log ?? null,
+            created_todos: error.payload.created_todos ?? [],
+          })
+        }
+
+        setErrorMessage(error instanceof Error ? error.message : 'AI Todo 생성을 시작하지 못했습니다.')
+      } finally {
+        setAiTodoStartingTaskId('')
+      }
+    })()
   }
 
   function handleRunAiTaskAssignment() {
@@ -1142,7 +2204,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-[1.4fr,0.8fr,0.8fr,auto]">
+        <div className="grid gap-3 lg:grid-cols-[1.4fr,0.8fr,0.8fr,auto,auto]">
           <label className="space-y-2 text-sm font-medium text-campus-700">
             <span>검색</span>
             <input
@@ -1184,12 +2246,34 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           </label>
 
           <div className="flex items-end">
-            <Button type="button" variant="ghost" className={cn('w-full', stableGhostButtonClass)} onClick={() => void loadTasks()}>
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn('w-full', stableGhostButtonClass)}
+              onClick={() => void loadTasks()}
+              disabled={isDirty || isSavingChanges}
+            >
               새로고침
+            </Button>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <Button
+              type="button"
+              onClick={() => void flushPendingChanges('manual')}
+              disabled={isSavingChanges || !isDirty}
+            >
+              {isSavingChanges ? '저장 중...' : isDirty ? '지금 저장' : '자동 저장 완료'}
             </Button>
           </div>
         </div>
       </Card>
+
+      {saveMessage && (
+        <Card className="border-brand-100 bg-brand-50">
+          <p className="text-sm text-brand-700">{saveMessage}</p>
+        </Card>
+      )}
 
       {errorMessage && (
         <Card className="border-rose-200 bg-rose-50">
@@ -1235,9 +2319,29 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
             const hiddenTodoCount = Math.max(task.todos.length - todoPreviewItems.length, 0)
             const canEditTodos = canManageTodos(task)
             const canEditStatus = canChangeTaskStatus(task)
-            const isStatusUpdating = statusUpdatingTaskId === task.id
-            const isAssigneeUpdating = assigneeUpdatingTaskId === task.id
-            const isTodoSubmitting = todoSubmittingTaskId === task.id
+            const aiTodoStatus = aiTodoStatuses[task.id] ?? null
+            const aiTodoStatusValue = aiTodoStatus?.status ?? 'idle'
+            const isAiTodoGenerating = aiTodoStatusValue === 'pending' || aiTodoStatusValue === 'running'
+            const isAiTodoCooldownActive =
+              aiTodoStatusValue === 'cooldown' && (aiTodoStatus?.remaining_seconds ?? 0) > 0
+            const aiTodoDisabled =
+              !isLeader || !currentUserId || aiTodoStartingTaskId === task.id || isAiTodoGenerating || isAiTodoCooldownActive
+            const aiTodoButtonLabel = aiTodoStartingTaskId === task.id || isAiTodoGenerating
+              ? 'AI가 Todo 생성중...'
+              : isAiTodoCooldownActive
+                ? `다시 생성까지 ${formatCountdown(aiTodoStatus?.remaining_seconds ?? 0)}`
+                : 'AI Todo 생성'
+            const aiTodoHelpMessage = isAiTodoGenerating
+              ? 'AI가 이 Task의 세부 Todo를 정리하고 있어요.'
+              : isAiTodoCooldownActive
+                ? `${formatCountdown(aiTodoStatus?.remaining_seconds ?? 0)} 후 다시 생성할 수 있어요.`
+                : aiTodoStatus?.latest_log?.status === 'failed'
+                  ? aiTodoStatus.latest_log.error_message || 'AI Todo 생성에 실패했습니다.'
+                  : aiTodoStatus?.latest_log?.status === 'completed'
+                    ? aiTodoStatus.latest_log.created_count > 0
+                      ? `최근 실행으로 ${aiTodoStatus.latest_log.created_count}개의 Todo가 추가됐어요.`
+                      : '최근 실행에서는 새로 추가할 Todo가 없었어요.'
+                    : '관리자만 실행할 수 있으며, 같은 Task에는 5분 쿨타임이 적용됩니다.'
 
             return (
               <Card key={task.id} className="space-y-4 p-5">
@@ -1304,7 +2408,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                           <select
                             value={task.assignee_id ?? ''}
                             onChange={(event) => void handleAssigneeChange(task.id, event.target.value)}
-                            disabled={isAssigneeUpdating}
+                            disabled={isSavingChanges}
                             className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 disabled:opacity-60"
                           >
                             <option value="">미지정</option>
@@ -1343,7 +2447,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                       <select
                         value={task.status}
                         onChange={(event) => void handleTaskStatusChange(task.id, event.target.value as TeamTaskStatus)}
-                        disabled={isStatusUpdating || !canEditStatus}
+                        disabled={isSavingChanges || !canEditStatus}
                         className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 disabled:opacity-60"
                       >
                         <option value="todo">시작 전</option>
@@ -1367,17 +2471,25 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => setExpandedTasks((current) => ({ ...current, [task.id]: !isExpanded }))}>
                       {isExpanded ? '접기' : 'Todo 펼치기'}
                     </Button>
-                    {canEditTodos ? (
-                      <Button type="button" size="sm" variant="subtle" className={stableSubtleButtonClass} onClick={() => handleRecommendTodos(task.id)}>
-                        AI가 추천해주는 Todo List 받기
+                    {isLeader ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="subtle"
+                        className={stableSubtleButtonClass}
+                        onClick={() => handleRecommendTodos(task.id)}
+                        disabled={aiTodoDisabled}
+                      >
+                        {aiTodoButtonLabel}
                       </Button>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-campus-500 ring-1 ring-inset ring-campus-200">
-                        Todo 조작은 담당자만 가능
+                        AI Todo 생성은 관리자만 가능
                       </span>
                     )}
                   </div>
                 </div>
+                <p className="text-xs text-campus-500">{aiTodoHelpMessage}</p>
 
                 {isExpanded && (
                   <div className="grid gap-4 xl:grid-cols-[1.35fr,0.85fr]">
@@ -1396,7 +2508,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                               <input
                                 type="checkbox"
                                 checked={todo.is_done}
-                                disabled={todoUpdatingId === todo.id}
+                                disabled={isSavingChanges}
                                 onChange={(event) => void handleTodoToggle(todo.id, event.target.checked)}
                                 className="mt-1 h-4 w-4 rounded border-campus-300 text-brand-500 focus:ring-brand-300"
                               />
@@ -1441,15 +2553,24 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                                 size="sm"
                                 className="self-stretch px-4"
                                 onClick={() => void handleTodoCreate(task.id)}
-                                disabled={isTodoSubmitting || todoDraft.trim().length === 0}
+                                disabled={isSavingChanges || todoDraft.trim().length === 0}
                               >
-                                {isTodoSubmitting ? '추가 중...' : '추가'}
+                                {isSavingChanges ? '저장 중...' : '추가'}
                               </Button>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => handleRecommendTodos(task.id)}>
-                                AI Todo 추천
-                              </Button>
+                              {isLeader && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className={stableGhostButtonClass}
+                                  onClick={() => handleRecommendTodos(task.id)}
+                                  disabled={aiTodoDisabled}
+                                >
+                                  {aiTodoButtonLabel}
+                                </Button>
+                              )}
                               <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs text-campus-500 ring-1 ring-inset ring-campus-200">
                                 담당자만 체크와 추가가 가능합니다.
                               </span>
