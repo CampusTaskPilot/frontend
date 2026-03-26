@@ -147,7 +147,7 @@ export function TeamWorkspacePage() {
           return
         }
 
-        if ((activeTab === 'members' || activeTab === 'tasks') && !membersLoaded) {
+        if ((activeTab === 'members' || activeTab === 'tasks' || activeTab === 'pm') && !membersLoaded) {
           setIsTabLoading(true)
           const data = await fetchTeamMembers(currentTeamId)
           if (!isMounted) return
@@ -268,7 +268,15 @@ export function TeamWorkspacePage() {
                   isLeader={Boolean(isLeader)}
                 />
               )}
-              {activeTab === 'pm' && <TeamPMTab />}
+              {activeTab === 'pm' && teamId && (
+                <TeamPMTab
+                  teamId={teamId}
+                  currentUserId={user?.id ?? null}
+                  isLeader={Boolean(isLeader)}
+                  members={members}
+                  onOpenTasks={() => setActiveTab('tasks')}
+                />
+              )}
             </>
           )}
         </div>

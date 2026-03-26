@@ -225,6 +225,49 @@ export interface AiTodoGenerationStartResponse {
 
 export type TeamCalendarEventType = 'general' | 'meeting' | 'deadline' | 'presentation'
 
+export interface MeetingActionizerTodoDraft {
+  content: string
+  is_done: boolean
+  position: number
+  created_by: string
+}
+
+export interface MeetingActionizerTaskDraft {
+  client_draft_id: string
+  team_id: string
+  title: string
+  description: string | null
+  status: TeamTaskStatus
+  priority: TeamTaskPriority
+  assignee_id: string | null
+  suggested_assignee_name: string | null
+  created_by: string
+  due_date: string | null
+  position: number
+  todos: MeetingActionizerTodoDraft[]
+}
+
+export interface MeetingActionizerCalendarEventDraft {
+  client_draft_id: string
+  team_id: string
+  title: string
+  description: string | null
+  type: TeamCalendarEventType
+  event_date: string
+  start_time: string | null
+  end_time: string | null
+  is_all_day: boolean
+  created_by: string
+}
+
+export interface MeetingActionizerResponse {
+  summary: string
+  decisions: string[]
+  task_drafts: MeetingActionizerTaskDraft[]
+  calendar_event_drafts: MeetingActionizerCalendarEventDraft[]
+  suspicious_injection_detected: boolean
+}
+
 export interface TeamCalendarEventRecord {
   id: string
   team_id: string

@@ -2369,14 +2369,22 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                         {task.description || '설명이 아직 없습니다. 간단한 목적이나 결과물을 적어두면 팀원들이 맥락을 빨리 파악할 수 있습니다.'}
                       </p>
                       {!isExpanded && (
-                        <div className="mt-3 rounded-3xl border border-campus-200 bg-campus-50 px-4 py-3">
+                        <div className="mt-3 rounded-3xl border border-campus-200 bg-campus-50 px-4 py-3 transition-colors hover:border-rose-200/80 hover:bg-rose-50/40">
                           <p className="text-xs font-semibold text-campus-500">Todo 미리보기</p>
                           {todoPreviewItems.length > 0 ? (
                             <div className="mt-2 space-y-1.5">
                               {todoPreviewItems.map((todo) => (
-                                <div key={todo.id} className="flex items-center gap-2 text-sm text-campus-700">
-                                  <span className={cn('h-2 w-2 rounded-full', todo.is_done ? 'bg-emerald-400' : 'bg-campus-300')} />
-                                  <span className={cn('truncate', todo.is_done && 'text-campus-500 line-through')}>
+                                <div
+                                  key={todo.id}
+                                  className={cn(
+                                    'flex items-center gap-2 rounded-2xl px-2.5 py-1.5 text-sm transition-colors',
+                                    todo.is_done
+                                      ? 'text-campus-700'
+                                      : 'border border-rose-200/80 bg-rose-50/80 text-rose-700 hover:border-rose-300/80 hover:bg-rose-100/70',
+                                  )}
+                                >
+                                  <span className={cn('h-2 w-2 rounded-full', todo.is_done ? 'bg-emerald-400' : 'bg-rose-400')} />
+                                  <span className={cn('truncate', !todo.is_done && 'text-rose-700', todo.is_done && 'text-campus-500 line-through')}>
                                     {todo.content}
                                   </span>
                                 </div>
@@ -2516,12 +2524,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                               <span
                                 className={cn(
                                   'mt-1 inline-flex h-4 w-4 rounded-full border',
-                                  todo.is_done ? 'border-emerald-300 bg-emerald-100' : 'border-campus-300 bg-campus-100',
+                                  todo.is_done ? 'border-emerald-300 bg-emerald-100' : 'border-rose-300 bg-rose-100',
                                 )}
                               />
                             )}
                             <div className="min-w-0 flex-1">
-                              <p className={cn('text-sm text-campus-800', todo.is_done && 'text-campus-500 line-through')}>
+                              <p className={cn('text-sm text-campus-800', !todo.is_done && 'text-rose-700', todo.is_done && 'text-campus-500 line-through')}>
                                 {todo.content}
                               </p>
                               <p className="mt-1 text-xs text-campus-500">추가 {formatDateTimeLabel(todo.created_at)}</p>

@@ -1,65 +1,82 @@
-import { useState, type FormEvent } from 'react'
-import { Button } from '../../../components/ui/Button'
+import { useState } from 'react'
 import { Card } from '../../../components/ui/Card'
+import type { TeamMemberWithProfile } from '../types/team'
+import { DiagnoseTab } from './DiagnoseTab'
+import { MeetingActionizerTab } from './MeetingActionizerTab'
+import { ReportWriterTab } from './ReportWriterTab'
 
-export function TeamPMTab() {
-  const [issue, setIssue] = useState('')
-  const [request, setRequest] = useState('')
-  const [result, setResult] = useState('')
+type PMAssistantTabKey = 'diagnose' | 'meeting-actionizer' | 'report-writer'
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+const PM_ASSISTANT_TABS: Array<{ key: PMAssistantTabKey; label: string; description: string }> = [
+  {
+    key: 'diagnose',
+    label: '문제 진단',
+    description: '채팅 기반 이슈 진단',
+  },
+  {
+    key: 'meeting-actionizer',
+    label: '회의 실행화',
+    description: '회의 텍스트를 draft로 전환',
+  },
+  {
+    key: 'report-writer',
+    label: '보고서 작성',
+    description: '기간 기반 문서 초안 생성',
+  },
+]
 
-    if (!issue.trim() && !request.trim()) {
-      setResult('문제 상황 또는 요청 내용을 입력해 주세요.')
-      return
-    }
+interface TeamPMTabProps {
+  teamId: string
+  currentUserId: string | null
+  isLeader: boolean
+  members: TeamMemberWithProfile[]
+  onOpenTasks: () => void
+}
 
-    setResult(
-      [
-        'PM 상담 결과(임시):',
-        `- 핵심 문제: ${issue.trim() || '미입력'}`,
-        `- 요청 내용: ${request.trim() || '미입력'}`,
-        '- 다음 액션: 우선순위 정의 -> 담당자 배정 -> 일정 재조정',
-      ].join('\n'),
-    )
-  }
+export function TeamPMTab({ teamId, currentUserId, isLeader, members, onOpenTasks }: TeamPMTabProps) {
+  const [activeTab, setActiveTab] = useState<PMAssistantTabKey>('meeting-actionizer')
 
   return (
-    <Card className="space-y-4">
-      <h2 className="font-display text-2xl text-campus-900">PM 상담</h2>
-      <form className="space-y-3" onSubmit={(event) => handleSubmit(event)}>
-        <label className="space-y-2 text-sm font-medium text-campus-700">
-          <span>문제 상황</span>
-          <textarea
-            value={issue}
-            onChange={(event) => setIssue(event.target.value)}
-            rows={4}
-            className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
-            placeholder="예: 일정이 지연되고 역할 분담이 불명확함"
-          />
-        </label>
-        <label className="space-y-2 text-sm font-medium text-campus-700">
-          <span>요청 내용</span>
-          <textarea
-            value={request}
-            onChange={(event) => setRequest(event.target.value)}
-            rows={4}
-            className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
-            placeholder="예: 회의 안건 정리와 우선순위 제안을 받고 싶어요."
-          />
-        </label>
-        <div className="flex justify-end">
-          <Button type="submit">상담 요청</Button>
+    <div className="space-y-4">
+      <Card className="space-y-4">
+        <div className="space-y-1">
+          <h1 className="font-display text-2xl text-campus-900">PM Assistant</h1>
+          <p className="text-sm text-campus-600">
+            기능별 책임을 분리해 Diagnose, Meeting Actionizer, Report Writer를 독립적으로 확장할 수 있게 구성했습니다.
+          </p>
         </div>
-      </form>
 
-      <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-4">
-        <p className="text-xs text-campus-500">결과</p>
-        <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-campus-800">
-          {result || '상담 요청을 입력하면 결과가 여기에 표시됩니다.'}
-        </pre>
-      </div>
-    </Card>
+        <div className="grid gap-3 md:grid-cols-3">
+          {PM_ASSISTANT_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={[
+                'rounded-3xl border px-4 py-4 text-left transition',
+                activeTab === tab.key
+                  ? 'border-brand-200 bg-brand-50 shadow-sm'
+                  : 'border-campus-200 bg-white hover:border-campus-300',
+              ].join(' ')}
+            >
+              <p className="text-sm font-semibold text-campus-900">{tab.label}</p>
+              <p className="mt-1 text-xs text-campus-600">{tab.description}</p>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {activeTab === 'diagnose' && <DiagnoseTab />}
+      {activeTab === 'meeting-actionizer' && (
+        <MeetingActionizerTab
+          teamId={teamId}
+          requestedBy={currentUserId}
+          isLeader={isLeader}
+          members={members}
+          onOpenTasks={onOpenTasks}
+        />
+      )}
+      {activeTab === 'report-writer' && <ReportWriterTab />}
+    </div>
   )
 }

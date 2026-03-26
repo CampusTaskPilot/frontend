@@ -113,7 +113,7 @@ export function AssignedTaskCard({ task }: AssignedTaskCardProps) {
               '설명이 아직 없습니다. 팀 워크스페이스에서 목적이나 결과물을 정리해 두면 업무 맥락을 더 빠르게 파악할 수 있습니다.'}
           </p>
 
-          <div className="rounded-[26px] border border-campus-200 bg-campus-50 px-4 py-3">
+          <div className="rounded-[26px] border border-campus-200 bg-campus-50 px-4 py-3 transition-colors group-hover:border-rose-200/80 group-hover:bg-rose-50/40">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-500">
               Todo Preview
             </p>
@@ -123,16 +123,25 @@ export function AssignedTaskCard({ task }: AssignedTaskCardProps) {
             ) : (
               <div className="mt-3 space-y-2">
                 {previewTodos.map((todo) => (
-                  <div key={todo.id} className="flex items-center gap-2 text-sm text-campus-700">
+                  <div
+                    key={todo.id}
+                    className={cn(
+                      'flex items-center gap-2 rounded-2xl px-2.5 py-1.5 text-sm transition-colors',
+                      todo.is_done
+                        ? 'text-campus-700'
+                        : 'border border-rose-200/80 bg-rose-50/80 text-rose-700 group-hover:border-rose-300/80 group-hover:bg-rose-100/70',
+                    )}
+                  >
                     <span
                       className={cn(
                         'h-2.5 w-2.5 rounded-full',
-                        todo.is_done ? 'bg-emerald-400' : 'bg-brand-400',
+                        todo.is_done ? 'bg-emerald-400' : 'bg-rose-400',
                       )}
                     />
                     <span
                       className={cn(
                         'truncate',
+                        !todo.is_done && 'text-rose-700',
                         todo.is_done && 'text-campus-500 line-through',
                       )}
                     >
