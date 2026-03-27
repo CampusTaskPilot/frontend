@@ -1,4 +1,4 @@
-import type { MeetingActionizerResponse } from '../types/team'
+import type { MeetingActionizerResponse, MeetingActionizerStatus } from '../types/team'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 
@@ -84,4 +84,15 @@ export async function requestMeetingActionizer(params: {
 
     throw new MeetingActionizerApiError(toReadableNetworkError(error), 0, null)
   }
+}
+
+export async function fetchMeetingActionizerStatus(teamId: string): Promise<MeetingActionizerStatus> {
+  const response = await fetch(`${apiBaseUrl}/pm-assistant/meeting-actionize/status?team_id=${teamId}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  return parseResponse<MeetingActionizerStatus>(response)
 }

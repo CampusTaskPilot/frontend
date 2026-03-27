@@ -1,6 +1,6 @@
 ﻿import { Navigate } from 'react-router-dom'
 import { Card } from '../components/ui/Card'
-import { useAuth } from '../features/auth/context/AuthContext'
+import { useAuth } from '../features/auth/context/useAuth'
 
 export function ProfilePage() {
   const { isLoading, user } = useAuth()

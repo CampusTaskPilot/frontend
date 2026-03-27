@@ -3,7 +3,7 @@ import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { cn } from '../../../lib/cn'
 import { CalendarEventCard } from './CalendarEventCard'
-import { requestMeetingActionizer } from '../lib/meetingActionizer'
+import { fetchMeetingActionizerStatus, requestMeetingActionizer } from '../lib/meetingActionizer'
 import {
   fetchTeamTasksWorkspace,
   saveWorkspaceChanges,
@@ -171,12 +171,51 @@ export function MeetingActionizerTab({
   const [draftApplyStatus, setDraftApplyStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [cooldownUntil, setCooldownUntil] = useState<string | null>(null)
+  const [remainingSeconds, setRemainingSeconds] = useState(0)
 
   useEffect(() => {
     if (!participantInput.trim() && participantPlaceholder) {
       setParticipantInput(participantPlaceholder)
     }
   }, [participantInput, participantPlaceholder])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadCooldownStatus() {
+      try {
+        const status = await fetchMeetingActionizerStatus(teamId)
+        if (!isMounted) return
+        setCooldownUntil(status.available_at)
+        setRemainingSeconds(status.remaining_seconds)
+      } catch {
+        if (!isMounted) return
+        setCooldownUntil(null)
+        setRemainingSeconds(0)
+      }
+    }
+
+    void loadCooldownStatus()
+
+    return () => {
+      isMounted = false
+    }
+  }, [teamId])
+
+  useEffect(() => {
+    if (!cooldownUntil) return
+
+    const timer = window.setInterval(() => {
+      const next = Math.max(Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / 1000), 0)
+      setRemainingSeconds(next)
+      if (next === 0) {
+        setCooldownUntil(null)
+      }
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [cooldownUntil])
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     if (isAnalyzing) return
@@ -229,6 +268,11 @@ export function MeetingActionizerTab({
       return
     }
 
+    if (remainingSeconds > 0) {
+      setErrorMessage(`다시 실행까지 ${Math.ceil(remainingSeconds / 60)}분 남았습니다.`)
+      return
+    }
+
     setIsAnalyzing(true)
     setIsSubmitting(true)
     setDraftApplyStatus('idle')
@@ -245,11 +289,28 @@ export function MeetingActionizerTab({
         rawMeetingText,
       })
       setResult(response)
+      setCooldownUntil(response.cooldown_until)
+      setRemainingSeconds(response.remaining_seconds)
       applySelectionState(response)
     } catch (error) {
       setResult(null)
       setSelectedTaskIds([])
       setSelectedEventIds([])
+      if (
+        error &&
+        typeof error === 'object' &&
+        'payload' in error &&
+        error.payload &&
+        typeof error.payload === 'object'
+      ) {
+        const payload = error.payload as { available_at?: string; remaining_seconds?: number }
+        if (payload.available_at) {
+          setCooldownUntil(payload.available_at)
+        }
+        if (typeof payload.remaining_seconds === 'number') {
+          setRemainingSeconds(payload.remaining_seconds)
+        }
+      }
       setErrorMessage(error instanceof Error ? error.message : '회의 실행화 요청에 실패했습니다.')
     } finally {
       setIsAnalyzing(false)
@@ -326,6 +387,7 @@ export function MeetingActionizerTab({
           taskDeletes: [],
           todoCreates,
           todoUpdates: [],
+          todoDeletes: [],
         })
 
         createdTaskCount = saved.createdTasks.length
@@ -470,9 +532,14 @@ export function MeetingActionizerTab({
               {successMessage}
             </div>
           )}
+          {remainingSeconds > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              다시 실행까지 {Math.ceil(remainingSeconds / 60)}분 남았습니다.
+            </div>
+          )}
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || remainingSeconds > 0}>
               {isSubmitting ? '분석 중...' : '분석하기'}
             </Button>
           </div>

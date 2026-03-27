@@ -1,27 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card } from '../../../components/ui/Card'
 import type { TeamMemberWithProfile } from '../types/team'
-import { DiagnoseTab } from './DiagnoseTab'
 import { MeetingActionizerTab } from './MeetingActionizerTab'
+import { ProjectDirectionAssistantTab } from './ProjectDirectionAssistantTab'
 import { ReportWriterTab } from './ReportWriterTab'
 
-type PMAssistantTabKey = 'diagnose' | 'meeting-actionizer' | 'report-writer'
+export type PMAssistantTabKey = 'direction' | 'meeting-actionizer' | 'report-writer'
 
-const PM_ASSISTANT_TABS: Array<{ key: PMAssistantTabKey; label: string; description: string }> = [
+const pmAssistantTabs: Array<{ key: PMAssistantTabKey; label: string; description: string }> = [
   {
-    key: 'diagnose',
-    label: '문제 진단',
-    description: '채팅 기반 이슈 진단',
+    key: 'direction',
+    label: '방향 제안',
+    description: '현재 프로젝트 흐름을 보고 다음 우선순위를 추천합니다.',
   },
   {
     key: 'meeting-actionizer',
-    label: '회의 실행화',
-    description: '회의 텍스트를 draft로 전환',
+    label: '회의 액션 정리',
+    description: '회의 내용을 Task, Todo, 일정 초안으로 빠르게 정리합니다.',
   },
   {
     key: 'report-writer',
-    label: '보고서 작성',
-    description: '기간 기반 문서 초안 생성',
+    label: 'PM 보고서',
+    description: '현재 진행 현황을 바탕으로 보고서를 생성합니다.',
   },
 ]
 
@@ -31,10 +31,24 @@ interface TeamPMTabProps {
   isLeader: boolean
   members: TeamMemberWithProfile[]
   onOpenTasks: () => void
+  onOpenCalendar: () => void
+  initialTab?: PMAssistantTabKey
 }
 
-export function TeamPMTab({ teamId, currentUserId, isLeader, members, onOpenTasks }: TeamPMTabProps) {
-  const [activeTab, setActiveTab] = useState<PMAssistantTabKey>('meeting-actionizer')
+export function TeamPMTab({
+  teamId,
+  currentUserId,
+  isLeader,
+  members,
+  onOpenTasks,
+  onOpenCalendar,
+  initialTab = 'direction',
+}: TeamPMTabProps) {
+  const [activeTab, setActiveTab] = useState<PMAssistantTabKey>(initialTab)
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
 
   return (
     <div className="space-y-4">
@@ -42,12 +56,12 @@ export function TeamPMTab({ teamId, currentUserId, isLeader, members, onOpenTask
         <div className="space-y-1">
           <h1 className="font-display text-2xl text-campus-900">PM Assistant</h1>
           <p className="text-sm text-campus-600">
-            기능별 책임을 분리해 Diagnose, Meeting Actionizer, Report Writer를 독립적으로 확장할 수 있게 구성했습니다.
+            팀 운영에 필요한 방향 제안, 회의 정리, 보고서 작성을 한 흐름 안에서 도와주는 AI 보조 공간입니다.
           </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          {PM_ASSISTANT_TABS.map((tab) => (
+          {pmAssistantTabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -60,13 +74,22 @@ export function TeamPMTab({ teamId, currentUserId, isLeader, members, onOpenTask
               ].join(' ')}
             >
               <p className="text-sm font-semibold text-campus-900">{tab.label}</p>
-              <p className="mt-1 text-xs text-campus-600">{tab.description}</p>
+              <p className="mt-1 text-xs leading-5 text-campus-600">{tab.description}</p>
             </button>
           ))}
         </div>
       </Card>
 
-      {activeTab === 'diagnose' && <DiagnoseTab />}
+      {activeTab === 'direction' && (
+        <ProjectDirectionAssistantTab
+          teamId={teamId}
+          currentUserId={currentUserId}
+          isLeader={isLeader}
+          onOpenTasks={onOpenTasks}
+          onOpenCalendar={onOpenCalendar}
+        />
+      )}
+
       {activeTab === 'meeting-actionizer' && (
         <MeetingActionizerTab
           teamId={teamId}
@@ -76,7 +99,10 @@ export function TeamPMTab({ teamId, currentUserId, isLeader, members, onOpenTask
           onOpenTasks={onOpenTasks}
         />
       )}
-      {activeTab === 'report-writer' && <ReportWriterTab />}
+
+      {activeTab === 'report-writer' && (
+        <ReportWriterTab teamId={teamId} currentUserId={currentUserId} />
+      )}
     </div>
   )
 }

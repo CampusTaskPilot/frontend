@@ -15,9 +15,21 @@ interface CalendarEventListProps {
   groups: TeamCalendarEventGroup[]
   isLeader: boolean
   onEdit: (event: TeamCalendarEventRecord) => void
+  isSelectionMode?: boolean
+  selectedEventIds?: string[]
+  onSelectToggle?: (eventId: string, checked: boolean) => void
+  onDelete?: (event: TeamCalendarEventRecord) => void
 }
 
-export function CalendarEventList({ groups, isLeader, onEdit }: CalendarEventListProps) {
+export function CalendarEventList({
+  groups,
+  isLeader,
+  onEdit,
+  isSelectionMode = false,
+  selectedEventIds = [],
+  onSelectToggle,
+  onDelete,
+}: CalendarEventListProps) {
   return (
     <div className="space-y-8">
       {groups.map((group) => (
@@ -34,6 +46,10 @@ export function CalendarEventList({ groups, isLeader, onEdit }: CalendarEventLis
                 event={event}
                 isLeader={isLeader}
                 onEdit={onEdit}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedEventIds.includes(event.id)}
+                onSelectToggle={onSelectToggle}
+                onDelete={onDelete}
               />
             ))}
           </div>

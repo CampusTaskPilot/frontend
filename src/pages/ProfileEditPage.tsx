@@ -4,7 +4,7 @@ import { SkillSelector } from '../components/common/SkillSelector'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { InputField } from '../components/ui/InputField'
-import { useAuth } from '../features/auth/context/AuthContext'
+import { useAuth } from '../features/auth/context/useAuth'
 import { DeleteAccountModal } from '../features/profile/components/DeleteAccountModal'
 import {
   fetchProfilePageData,

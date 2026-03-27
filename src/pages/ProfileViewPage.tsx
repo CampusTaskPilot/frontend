@@ -2,7 +2,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
-import { useAuth } from '../features/auth/context/AuthContext'
+import { useAuth } from '../features/auth/context/useAuth'
 import { ProfileHeader } from '../features/profile/components/ProfileHeader'
 import { SkillList } from '../features/profile/components/SkillList'
 import { fetchProfilePageData } from '../features/profile/lib/profile'

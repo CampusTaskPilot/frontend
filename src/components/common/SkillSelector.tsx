@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Button } from '../ui/Button'
 
-const skillCategories = [
+const SKILL_CATEGORIES = [
   'all',
   'frontend',
   'backend',
@@ -15,7 +15,21 @@ const skillCategories = [
   'language',
 ] as const
 
-type SkillCategoryFilter = (typeof skillCategories)[number]
+type SkillCategoryFilter = (typeof SKILL_CATEGORIES)[number]
+
+const skillCategoryLabels: Record<SkillCategoryFilter, string> = {
+  all: '전체',
+  frontend: '프론트엔드',
+  backend: '백엔드',
+  mobile: '모바일',
+  database: '데이터베이스',
+  ai: 'AI',
+  devops: '데브옵스',
+  collaboration: '협업',
+  design: '디자인',
+  game: '게임',
+  language: '언어',
+}
 
 interface SkillItem {
   id: number
@@ -38,7 +52,7 @@ export function SkillSelector({
   onSelectSkill,
   onDeselectSkill,
   showSelectedList = true,
-  emptySelectedMessage = '선택된 스킬이 없습니다.',
+  emptySelectedMessage = '아직 선택한 기술이 없습니다.',
 }: SkillSelectorProps) {
   const [skillCategoryFilter, setSkillCategoryFilter] = useState<SkillCategoryFilter>('all')
   const [skillSearch, setSkillSearch] = useState('')
@@ -85,22 +99,16 @@ export function SkillSelector({
               onChange={(event) => setSkillCategoryFilter(event.target.value as SkillCategoryFilter)}
               className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
             >
-              <option value="all">전체</option>
-              <option value="frontend">프론트엔드</option>
-              <option value="backend">백엔드</option>
-              <option value="mobile">모바일</option>
-              <option value="database">데이터베이스</option>
-              <option value="ai">AI</option>
-              <option value="devops">데브옵스</option>
-              <option value="collaboration">협업</option>
-              <option value="design">디자인</option>
-              <option value="game">게임</option>
-              <option value="language">언어</option>
+              {SKILL_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {skillCategoryLabels[category]}
+                </option>
+              ))}
             </select>
           </label>
 
           <label className="space-y-2 text-sm font-medium text-campus-700">
-            <span>스킬 검색</span>
+            <span>기술 검색</span>
             <input
               value={skillSearch}
               onChange={(event) => setSkillSearch(event.target.value)}
@@ -112,13 +120,13 @@ export function SkillSelector({
 
         <div className="flex flex-col gap-3 md:flex-row md:items-end">
           <label className="flex-1 space-y-2 text-sm font-medium text-campus-700">
-            <span>스킬</span>
+            <span>기술 추가</span>
             <select
               value={newSkillId}
               onChange={(event) => setNewSkillId(event.target.value)}
               className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
             >
-              <option value="">스킬을 선택해 주세요</option>
+              <option value="">추가할 기술을 선택하세요</option>
               {availableSkills.map((skill) => (
                 <option key={skill.id} value={skill.id}>
                   {skill.name}
@@ -132,11 +140,11 @@ export function SkillSelector({
           </Button>
         </div>
 
-        <p className="text-xs text-campus-500">추가 가능한 스킬: {availableSkills.length}개</p>
+        <p className="text-xs text-campus-500">추가 가능한 기술: {availableSkills.length}개</p>
       </div>
 
       {showSelectedList && (
-        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+        <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
           {selectedSkills.length === 0 ? (
             <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-6 text-sm text-campus-500">
               {emptySelectedMessage}
@@ -151,9 +159,9 @@ export function SkillSelector({
               >
                 <div>
                   <p className="font-medium text-campus-900">{skill.name}</p>
-                  <p className="text-sm text-campus-500">{skill.category ?? '분류 없음'}</p>
+                  <p className="text-sm text-campus-500">{skill.category ?? '카테고리 없음'}</p>
                 </div>
-                <span className="text-sm font-medium text-brand-600">선택됨 · 클릭 해제</span>
+                <span className="text-sm font-medium text-brand-600">선택 해제</span>
               </button>
             ))
           )}

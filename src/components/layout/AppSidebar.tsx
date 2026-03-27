@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { useAuth } from '../../features/auth/context/AuthContext'
+import { useAuth } from '../../features/auth/context/useAuth'
 import { fetchSidebarTeams } from '../../features/teams/lib/teams'
 import type { SidebarTeamItem } from '../../features/teams/types/team'
 import { Button } from '../ui/Button'

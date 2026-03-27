@@ -361,6 +361,7 @@ export interface SaveWorkspaceChangesInput {
   taskDeletes: string[]
   todoCreates: WorkspaceTodoCreateInput[]
   todoUpdates: WorkspaceTodoUpdateInput[]
+  todoDeletes: string[]
 }
 
 export interface SaveWorkspaceChangesResult {
@@ -369,6 +370,7 @@ export interface SaveWorkspaceChangesResult {
   deletedTaskIds: string[]
   createdTodos: Array<{ clientId: string; todo: TeamTodoRecord }>
   updatedTodos: TeamTodoRecord[]
+  deletedTodoIds: string[]
 }
 
 function buildTaskUpdatePayload(update: WorkspaceTaskUpdateInput) {
@@ -424,6 +426,13 @@ export async function saveWorkspaceChanges(
   const createdTodos: Array<{ clientId: string; todo: TeamTodoRecord }> = []
   const updatedTodos: TeamTodoRecord[] = []
   const taskIdMap = new Map<string, string>()
+
+  if (input.todoDeletes.length > 0) {
+    const { error } = await supabase.from('todos').delete().in('id', input.todoDeletes)
+    if (error) {
+      throw error
+    }
+  }
 
   if (input.taskDeletes.length > 0) {
     const { error } = await supabase.from('tasks').delete().in('id', input.taskDeletes)
@@ -557,5 +566,6 @@ export async function saveWorkspaceChanges(
     deletedTaskIds: input.taskDeletes,
     createdTodos,
     updatedTodos,
+    deletedTodoIds: input.todoDeletes,
   }
 }

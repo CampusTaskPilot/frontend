@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../features/auth/context/AuthContext'
+import { useAuth } from '../../features/auth/context/useAuth'
 import { Button } from '../ui/Button'
 
 const SERVICE_NAME = 'TaskPilot'

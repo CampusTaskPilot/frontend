@@ -109,3 +109,17 @@ export async function updateCalendarEvent(params: {
 
   return toCalendarEventRecord(data)
 }
+
+export async function deleteCalendarEvents(eventIds: string[]): Promise<string[]> {
+  if (eventIds.length === 0) {
+    return []
+  }
+
+  const { error } = await supabase.from('calendar_events').delete().in('id', eventIds)
+
+  if (error) {
+    throw error
+  }
+
+  return eventIds
+}

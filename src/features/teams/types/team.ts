@@ -266,6 +266,149 @@ export interface MeetingActionizerResponse {
   task_drafts: MeetingActionizerTaskDraft[]
   calendar_event_drafts: MeetingActionizerCalendarEventDraft[]
   suspicious_injection_detected: boolean
+  cooldown_until: string | null
+  remaining_seconds: number
+}
+
+export interface MeetingActionizerStatus {
+  can_trigger: boolean
+  cooldown_minutes: number
+  remaining_seconds: number
+  available_at: string | null
+  message: string | null
+}
+
+export type ReportPeriodPreset = 'this_week' | 'last_week' | 'custom'
+export type PMReportScope = 'team' | 'personal'
+export type ReportTaskInclusionReason =
+  | 'due_date_in_range'
+  | 'task_updated_in_range'
+  | 'todo_updated_in_range'
+
+export interface PMReportTodoItem {
+  id: string
+  content: string
+  is_done: boolean
+  updated_at: string
+  changed_in_period: boolean
+}
+
+export interface PMReportAssignee {
+  id: string
+  full_name: string | null
+  email: string | null
+  profile_image_url: string | null
+}
+
+export interface PMReportTaskItem {
+  id: string
+  title: string
+  description: string | null
+  status: TeamTaskStatus
+  priority: TeamTaskPriority
+  due_date: string | null
+  updated_at: string
+  assignee: PMReportAssignee | null
+  inclusion_reasons: ReportTaskInclusionReason[]
+  todo_total_count: number
+  todo_completed_count: number
+  todo_pending_count: number
+  changed_todo_count_in_period: number
+  progress_ratio: number
+  completed_todos: PMReportTodoItem[]
+  pending_todos: PMReportTodoItem[]
+  changed_todos_in_period: PMReportTodoItem[]
+}
+
+export interface PMReportStatusSummary {
+  done: number
+  in_progress: number
+  todo: number
+}
+
+export interface PMReportCalendarEventItem {
+  id: string
+  title: string
+  type: 'general' | 'meeting' | 'deadline' | 'presentation'
+  event_date: string
+  start_time: string | null
+  end_time: string | null
+  is_all_day: boolean
+}
+
+export interface PMReportSections {
+  summary: string
+  completed: string
+  in_progress: string
+  risks: string
+  next_actions: string
+}
+
+export interface PMReportStatusLog {
+  id: string
+  team_id: string
+  requested_by: string | null
+  report_scope: PMReportScope
+  target_user_id: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface PMReportCooldownStatus {
+  can_trigger: boolean
+  cooldown_minutes: number
+  cooldown_remaining_seconds: number
+  cooldown_until: string | null
+  latest_log: PMReportStatusLog | null
+  message: string | null
+}
+
+export interface PMReportResponse {
+  report_scope: PMReportScope
+  report_label: string
+  report_period_label: string
+  criteria_description: string
+  total_task_count: number
+  total_calendar_event_count: number
+  status_summary: PMReportStatusSummary
+  high_progress_tasks: PMReportTaskItem[]
+  schedule_risk_tasks: PMReportTaskItem[]
+  tasks: PMReportTaskItem[]
+  calendar_events: PMReportCalendarEventItem[]
+  report_sections: PMReportSections
+  report_source: 'llm' | 'fallback'
+  cooldown_minutes: number
+  cooldown_remaining_seconds: number
+  cooldown_until: string | null
+}
+
+export type ProjectDirectionStatus = 'on_track' | 'warning' | 'risk'
+export type ProjectDirectionPriority = 'low' | 'medium' | 'high'
+export type ProjectDirectionActionType = 'open_pm_direction' | 'open_tasks' | 'open_calendar'
+
+export interface ProjectDirectionRecommendation {
+  id: string
+  title: string
+  description: string
+  priority?: ProjectDirectionPriority
+  actionLabel?: string
+  actionType?: ProjectDirectionActionType
+}
+
+export interface ProjectDirectionOverview {
+  id: string
+  teamId: string
+  status: ProjectDirectionStatus
+  headline: string
+  summary: string
+  recommendations: ProjectDirectionRecommendation[]
+  createdBy?: string | null
+  createdAt?: string
+  updatedAt?: string
+  source?: 'llm' | 'fallback'
 }
 
 export interface TeamCalendarEventRecord {

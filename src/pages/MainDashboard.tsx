@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
-import { useAuth } from '../features/auth/context/AuthContext'
+import { useAuth } from '../features/auth/context/useAuth'
 import { DashboardAssignedTaskSection } from '../features/dashboard/components/DashboardAssignedTaskSection'
 import { DashboardScheduleSection } from '../features/dashboard/components/DashboardScheduleSection'
 import { WorkSummaryCard } from '../features/dashboard/components/WorkSummaryCard'

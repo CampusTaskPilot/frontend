@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Button } from '../../../components/ui/Button'
+import { useId, type MouseEvent as ReactMouseEvent } from 'react'
 import { Card } from '../../../components/ui/Card'
 import { cn } from '../../../lib/cn'
 import { supabase } from '../../../lib/supabase'
@@ -57,6 +58,22 @@ interface PendingWorkspaceChanges {
   taskDeletes: string[]
   todoCreates: Record<string, WorkspaceTodoCreateInput>
   todoUpdates: Record<string, WorkspaceTodoUpdateInput>
+  todoDeletes: string[]
+}
+
+interface TodoDeleteIntent {
+  taskId: string
+  todoIds: string[]
+  title: string
+  description: string
+  confirmLabel: string
+}
+
+interface TaskDeleteIntent {
+  taskIds: string[]
+  title: string
+  description: string
+  confirmLabel: string
 }
 
 interface TaskWorkspaceDraftSnapshot {
@@ -70,6 +87,7 @@ const emptyPendingChanges = (): PendingWorkspaceChanges => ({
   taskDeletes: [],
   todoCreates: {},
   todoUpdates: {},
+  todoDeletes: [],
 })
 
 const priorityWeight: Record<TeamTaskPriority, number> = {
@@ -172,6 +190,51 @@ const stableSubtleButtonClass = 'hover:bg-brand-50 active:bg-brand-50'
 const autosaveDelayMs = 1800
 const aiTodoRefreshRetryDelayMs = 700
 const aiTodoRefreshRetryCount = 4
+const bodyScrollLockCountKey = 'taskpilotBodyScrollLockCount'
+const bodyScrollOverflowKey = 'taskpilotBodyScrollOverflow'
+let modalLayerSequence = 0
+const openModalLayers: number[] = []
+
+function lockBodyScroll() {
+  const currentCount = Number(document.body.dataset[bodyScrollLockCountKey] ?? '0')
+
+  if (currentCount === 0) {
+    document.body.dataset[bodyScrollOverflowKey] = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+
+  document.body.dataset[bodyScrollLockCountKey] = String(currentCount + 1)
+}
+
+function unlockBodyScroll() {
+  const currentCount = Number(document.body.dataset[bodyScrollLockCountKey] ?? '0')
+
+  if (currentCount <= 1) {
+    document.body.style.overflow = document.body.dataset[bodyScrollOverflowKey] ?? ''
+    delete document.body.dataset[bodyScrollLockCountKey]
+    delete document.body.dataset[bodyScrollOverflowKey]
+    return
+  }
+
+  document.body.dataset[bodyScrollLockCountKey] = String(currentCount - 1)
+}
+
+function registerModalLayer() {
+  modalLayerSequence += 1
+  openModalLayers.push(modalLayerSequence)
+  return modalLayerSequence
+}
+
+function unregisterModalLayer(layerId: number) {
+  const nextIndex = openModalLayers.lastIndexOf(layerId)
+  if (nextIndex >= 0) {
+    openModalLayers.splice(nextIndex, 1)
+  }
+}
+
+function isTopModalLayer(layerId: number) {
+  return openModalLayers[openModalLayers.length - 1] === layerId
+}
 
 function EmptyTaskState({
   isLeader,
@@ -254,7 +317,8 @@ function hasPendingChanges(pending: PendingWorkspaceChanges) {
     Object.keys(pending.taskUpdates).length > 0 ||
     pending.taskDeletes.length > 0 ||
     Object.keys(pending.todoCreates).length > 0 ||
-    Object.keys(pending.todoUpdates).length > 0
+    Object.keys(pending.todoUpdates).length > 0 ||
+    pending.todoDeletes.length > 0
   )
 }
 
@@ -270,6 +334,111 @@ function mergeTodoUpdate(
   next: WorkspaceTodoUpdateInput,
 ): WorkspaceTodoUpdateInput {
   return { ...current, ...next, todoId: next.todoId }
+}
+
+function ModalFrame({
+  open,
+  title,
+  description,
+  children,
+  onClose,
+  closeOnBackdrop = false,
+  closeOnEscape = true,
+}: {
+  open: boolean
+  title: string
+  description: string
+  children: ReactNode
+  onClose: () => void
+  closeOnBackdrop?: boolean
+  closeOnEscape?: boolean
+}) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const layerIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    const layerId = registerModalLayer()
+    layerIdRef.current = layerId
+    lockBodyScroll()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isTopModalLayer(layerId)) {
+        return
+      }
+
+      if (event.key === 'Escape' && closeOnEscape) {
+        event.preventDefault()
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      unregisterModalLayer(layerId)
+      layerIdRef.current = null
+      unlockBodyScroll()
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeOnEscape, onClose, open])
+
+  if (!open) {
+    return null
+  }
+
+  const handleBackdropClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!closeOnBackdrop || event.target !== event.currentTarget) {
+      return
+    }
+
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-campus-900/55 px-4 py-6 backdrop-blur-sm"
+      onMouseDown={handleBackdropClick}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="w-full max-w-2xl"
+      >
+        <Card className="max-h-[90vh] overflow-y-auto rounded-[2rem] border border-campus-200 p-0 shadow-2xl">
+          <div className="border-b border-campus-200 px-6 py-5 sm:px-8">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1 space-y-2">
+                <h3 id={titleId} className="font-display text-2xl text-campus-900">
+                  {title}
+                </h3>
+                <p id={descriptionId} className="text-sm leading-6 text-campus-600">
+                  {description}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                aria-label="모달 닫기"
+                className="shrink-0 whitespace-nowrap px-3"
+              >
+                닫기
+              </Button>
+            </div>
+          </div>
+          {children}
+        </Card>
+      </div>
+    </div>
+  )
 }
 
 export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }: TeamTasksTabProps) {
@@ -294,6 +463,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const [taskStatus, setTaskStatus] = useState<TeamTaskStatus>('todo')
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isDeletingTask, setIsDeletingTask] = useState(false)
+  const [todoDeleteIntent, setTodoDeleteIntent] = useState<TodoDeleteIntent | null>(null)
+  const [taskDeleteIntent, setTaskDeleteIntent] = useState<TaskDeleteIntent | null>(null)
+  const [taskSelectionMode, setTaskSelectionMode] = useState(false)
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [todoSelectionTaskIds, setTodoSelectionTaskIds] = useState<Record<string, boolean>>({})
+  const [selectedTodoIdsByTask, setSelectedTodoIdsByTask] = useState<Record<string, string[]>>({})
   const [todoDrafts, setTodoDrafts] = useState<Record<string, string>>({})
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({})
   const [aiNotice, setAiNotice] = useState('')
@@ -321,6 +496,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const isLeader = currentUserRole === 'leader'
   const workspaceDraftStorageKey = useMemo(() => `team-workspace-draft:${teamId}`, [teamId])
   const isEditing = editingTaskId.length > 0
+  const isTaskModalOpen = showCreateForm
   const aiGenerationJobStatus = aiGenerationStatus?.latest_log?.status ?? null
   const isAiGenerating = aiGenerationJobStatus === 'pending' || aiGenerationJobStatus === 'running'
   const isAiCooldownActive =
@@ -438,6 +614,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         taskDeletes: parsed.pendingChanges.taskDeletes ?? [],
         todoCreates: parsed.pendingChanges.todoCreates ?? {},
         todoUpdates: parsed.pendingChanges.todoUpdates ?? {},
+        todoDeletes: parsed.pendingChanges.todoDeletes ?? [],
       }
 
       if (!hasPendingChanges(normalizedPendingChanges)) {
@@ -716,6 +893,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         taskDeletes: snapshot.taskDeletes,
         todoCreates: Object.values(snapshot.todoCreates),
         todoUpdates: Object.values(snapshot.todoUpdates),
+        todoDeletes: snapshot.todoDeletes,
       })
 
       const createdTaskMap = new Map(result.createdTasks.map((entry) => [entry.clientId, entry.task] as const))
@@ -748,7 +926,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
             return {
               ...baseTask,
-              todos: [...nextTodos].sort((a, b) => a.position - b.position),
+              todos: nextTodos
+                .filter((todo) => !result.deletedTodoIds.includes(todo.id))
+                .sort((a, b) => a.position - b.position),
             }
           })
 
@@ -1517,6 +1697,44 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     setErrorMessage('')
   }
 
+  function closeTaskModal() {
+    if (isCreatingTask || isDeletingTask) {
+      return
+    }
+
+    resetTaskForm()
+  }
+
+  function toggleTaskSelection(taskId: string, checked: boolean) {
+    setSelectedTaskIds((current) =>
+      checked ? [...new Set([...current, taskId])] : current.filter((id) => id !== taskId),
+    )
+  }
+
+  function toggleTodoSelectionMode(taskId: string) {
+    const isActive = todoSelectionTaskIds[taskId] ?? false
+    setTodoSelectionTaskIds((current) => ({ ...current, [taskId]: !isActive }))
+    if (isActive) {
+      setSelectedTodoIdsByTask((current) => {
+        const next = { ...current }
+        delete next[taskId]
+        return next
+      })
+    }
+  }
+
+  function toggleTodoSelection(taskId: string, todoId: string, checked: boolean) {
+    setSelectedTodoIdsByTask((current) => {
+      const selectedIds = current[taskId] ?? []
+      return {
+        ...current,
+        [taskId]: checked
+          ? [...new Set([...selectedIds, todoId])]
+          : selectedIds.filter((id) => id !== todoId),
+      }
+    })
+  }
+
   function resetTaskForm() {
     setEditingTaskId('')
     setTaskTitle('')
@@ -1528,8 +1746,77 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     setShowCreateForm(false)
   }
 
-  async function handleDeleteTask() {
-    if (!isLeader || !editingTaskId) {
+  function applyTaskDelete(taskIds: string[]) {
+    applyDraftTasks((current) => current.filter((task) => !taskIds.includes(task.id)))
+    queuePendingChanges((current) => {
+      const nextTaskCreates = { ...current.taskCreates }
+      const nextTaskUpdates = { ...current.taskUpdates }
+      const nextTodoCreates = { ...current.todoCreates }
+      const nextTodoUpdates = { ...current.todoUpdates }
+      const nextTodoDeletes = [...current.todoDeletes]
+
+      taskIds.forEach((taskId) => {
+        const taskToDelete = tasks.find((task) => task.id === taskId) ?? null
+
+        delete nextTaskCreates[taskId]
+        delete nextTaskUpdates[taskId]
+
+        Object.entries(nextTodoCreates).forEach(([todoId, todo]) => {
+          if (todo.taskId === taskId) {
+            delete nextTodoCreates[todoId]
+          }
+        })
+
+        taskToDelete?.todos.forEach((todo) => {
+          delete nextTodoUpdates[todo.id]
+          if (!current.todoCreates[todo.id]) {
+            nextTodoDeletes.push(todo.id)
+          }
+        })
+      })
+
+      return {
+        taskCreates: nextTaskCreates,
+        taskUpdates: nextTaskUpdates,
+        taskDeletes: [
+          ...new Set([
+            ...current.taskDeletes,
+            ...taskIds.filter((taskId) => !current.taskCreates[taskId]),
+          ]),
+        ],
+        todoCreates: nextTodoCreates,
+        todoUpdates: nextTodoUpdates,
+        todoDeletes: [...new Set(nextTodoDeletes)],
+      }
+    })
+  }
+
+  function handleDeleteTaskRequest(taskIds: string[]) {
+    if (!isLeader || taskIds.length === 0) {
+      return
+    }
+
+    const taskLabels = tasks
+      .filter((task) => taskIds.includes(task.id))
+      .map((task) => task.title)
+      .slice(0, 2)
+    const extraCount = Math.max(taskIds.length - taskLabels.length, 0)
+    const titlePreview =
+      taskLabels.length > 0
+        ? `${taskLabels.join(', ')}${extraCount > 0 ? ` 외 ${extraCount}개` : ''}`
+        : `${taskIds.length}개 Task`
+
+    setTaskDeleteIntent({
+      taskIds,
+      title: taskIds.length === 1 ? '이 Task를 삭제할까요?' : '선택한 Task를 한 번에 삭제할까요?',
+      description: `${titlePreview}가 보드에서 제거됩니다.`,
+      confirmLabel: taskIds.length === 1 ? 'Task 삭제' : `${taskIds.length}개 Task 삭제`,
+    })
+  }
+
+  async function handleConfirmTaskDelete() {
+    const intent = taskDeleteIntent
+    if (!isLeader || !intent || intent.taskIds.length === 0) {
       return
     }
 
@@ -1537,39 +1824,18 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     setErrorMessage('')
 
     try {
-      applyDraftTasks((current) => current.filter((task) => task.id !== editingTaskId))
-      queuePendingChanges((current) => {
-        const taskToDelete = tasks.find((task) => task.id === editingTaskId) ?? null
-        const nextTaskCreates = { ...current.taskCreates }
-        const nextTaskUpdates = { ...current.taskUpdates }
-        const nextTodoCreates = { ...current.todoCreates }
-        const nextTodoUpdates = { ...current.todoUpdates }
-
-        delete nextTaskCreates[editingTaskId]
-        delete nextTaskUpdates[editingTaskId]
-
-        Object.entries(nextTodoCreates).forEach(([todoId, todo]) => {
-          if (todo.taskId === editingTaskId) {
-            delete nextTodoCreates[todoId]
-          }
-        })
-
-        taskToDelete?.todos.forEach((todo) => {
-          delete nextTodoUpdates[todo.id]
-        })
-
-        return {
-          taskCreates: nextTaskCreates,
-          taskUpdates: nextTaskUpdates,
-          taskDeletes: current.taskCreates[editingTaskId]
-            ? current.taskDeletes
-            : [...new Set([...current.taskDeletes, editingTaskId])],
-          todoCreates: nextTodoCreates,
-          todoUpdates: nextTodoUpdates,
-        }
-      })
-      resetTaskForm()
-      setSaveMessage('Task 삭제가 로컬에 반영되었습니다. 저장 시 서버에도 반영됩니다.')
+      applyTaskDelete(intent.taskIds)
+      setSelectedTaskIds([])
+      setTaskSelectionMode(false)
+      setTaskDeleteIntent(null)
+      if (editingTaskId && intent.taskIds.includes(editingTaskId)) {
+        resetTaskForm()
+      }
+      setSaveMessage(
+        intent.taskIds.length === 1
+          ? 'Task 삭제가 로컬에 반영되었습니다. 저장 시 서버에도 반영됩니다.'
+          : `${intent.taskIds.length}개의 Task 삭제가 로컬에 반영되었습니다.`,
+      )
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Task를 삭제하지 못했습니다.')
     } finally {
@@ -1751,6 +2017,110 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       setSaveMessage('Todo 상태가 로컬에 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Todo 상태를 바꾸지 못했습니다.')
+    }
+  }
+
+  function handleTodoDeleteRequest(task: TeamTaskWithTodos, todo: TeamTodoRecord) {
+    if (!canManageTodos(task)) {
+      setErrorMessage('Todo 삭제는 이 Task의 담당자만 할 수 있습니다.')
+      return
+    }
+
+    setTodoDeleteIntent({
+      taskId: task.id,
+      todoIds: [todo.id],
+      title: '이 Todo를 삭제할까요?',
+      description: `"${todo.content}" 항목이 체크리스트에서 제거됩니다. 삭제된 Todo는 복구되지 않습니다.`,
+      confirmLabel: 'Todo 삭제',
+    })
+  }
+
+  function handleSelectedTodosDeleteRequest(task: TeamTaskWithTodos) {
+    if (!canManageTodos(task)) {
+      setErrorMessage('Todo 선택 삭제는 이 Task의 담당자만 할 수 있습니다.')
+      return
+    }
+
+    const selectedTodoIds = selectedTodoIdsByTask[task.id] ?? []
+    if (selectedTodoIds.length === 0) {
+      return
+    }
+
+    setTodoDeleteIntent({
+      taskId: task.id,
+      todoIds: selectedTodoIds,
+      title: '선택한 Todo를 삭제할까요?',
+      description: `${selectedTodoIds.length}개의 Todo가 체크리스트에서 제거됩니다. 잘못 만든 항목을 한 번에 정리할 때 쓰는 삭제입니다.`,
+      confirmLabel: `${selectedTodoIds.length}개 삭제`,
+    })
+  }
+
+  async function handleConfirmTodoDelete() {
+    const intent = todoDeleteIntent
+    if (!intent) {
+      return
+    }
+
+    const ownerTask = tasks.find((task) => task.id === intent.taskId)
+    if (!ownerTask || !canManageTodos(ownerTask)) {
+      setTodoDeleteIntent(null)
+      setErrorMessage('Todo 삭제는 이 Task의 담당자만 할 수 있습니다.')
+      return
+    }
+
+    setErrorMessage('')
+
+    try {
+      const deleteTargetIds = new Set(intent.todoIds)
+      const deletedCount = intent.todoIds.length
+
+      applyDraftTasks((current) =>
+        current.map((task) =>
+          task.id === ownerTask.id
+            ? {
+                ...task,
+                todos: task.todos.filter((todo) => !deleteTargetIds.has(todo.id)),
+              }
+            : task,
+        ),
+      )
+      queuePendingChanges((current) => {
+        const nextTodoCreates = { ...current.todoCreates }
+        const nextTodoUpdates = { ...current.todoUpdates }
+        const nextTodoDeletes = [...current.todoDeletes]
+
+        intent.todoIds.forEach((todoId) => {
+          if (current.todoCreates[todoId]) {
+            delete nextTodoCreates[todoId]
+          } else {
+            nextTodoDeletes.push(todoId)
+          }
+
+          delete nextTodoUpdates[todoId]
+        })
+
+        return {
+          ...current,
+          todoCreates: nextTodoCreates,
+          todoUpdates: nextTodoUpdates,
+          todoDeletes: [...new Set(nextTodoDeletes)],
+        }
+      })
+
+      setSelectedTodoIdsByTask((current) => {
+        const next = { ...current }
+        delete next[ownerTask.id]
+        return next
+      })
+      setTodoSelectionTaskIds((current) => ({ ...current, [ownerTask.id]: false }))
+      setTodoDeleteIntent(null)
+      setSaveMessage(
+        deletedCount === 1
+          ? 'Todo가 로컬에서 제거되었습니다.'
+          : `선택한 Todo ${deletedCount}개가 로컬에서 제거되었습니다.`,
+      )
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Todo를 삭제하지 못했습니다.')
     }
   }
 
@@ -2008,15 +2378,15 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   <Button
                     type="button"
                     onClick={() => {
-                      if (showCreateForm && !isEditing) {
-                        resetTaskForm()
+                      if (isTaskModalOpen && !isEditing) {
+                        closeTaskModal()
                         return
                       }
                       resetTaskForm()
                       setShowCreateForm(true)
                     }}
                   >
-                    {showCreateForm && !isEditing ? '생성 폼 닫기' : 'Task 생성'}
+                    {isTaskModalOpen && !isEditing ? '생성 폼 닫기' : 'Task 생성'}
                   </Button>
                   <Button
                     type="button"
@@ -2058,21 +2428,26 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         </div>
       </Card>
 
-      {isLeader && showCreateForm && (
-        <Card className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="font-display text-2xl text-campus-900">{isEditing ? 'Task 수정' : '새 Task 만들기'}</h3>
-              <p className="mt-1 text-sm text-campus-500">
-                {isEditing
-                  ? '기존 Task 정보를 불러와 바로 수정할 수 있습니다.'
-                  : '큰 업무 단위를 먼저 만들고, 세부 Todo는 Task 안에서 이어서 추가하세요.'}
+      {isLeader && (
+        <ModalFrame
+          open={isTaskModalOpen}
+          title={isEditing ? 'Task 수정' : '새 Task 만들기'}
+          description={
+            isEditing
+              ? ''
+              : '큰 업무 단위를 먼저 만들고, 세부 Todo는 Task 내부에서 이어서 정리하세요.'
+          }
+          onClose={closeTaskModal}
+          closeOnEscape={!isCreatingTask && !isDeletingTask}
+        >
+          <form className="grid gap-4 px-6 py-6 sm:px-8 lg:grid-cols-2" onSubmit={handleCreateTask}>
+            <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2">
+              <TaskMetaBadge tone="neutral">{isEditing ? '관리자 수정 모드' : '새 Task 초안'}</TaskMetaBadge>
+              <p className="text-xs text-campus-500">
+                {isEditing ? 'ESC로 닫을 수 있으며, 저장 중에는 닫을 수 없습니다.' : '생성 후 Todo를 이어서 추가할 수 있습니다.'}
               </p>
             </div>
-            <TaskMetaBadge tone="neutral">{isEditing ? '관리자 수정 모드' : 'created_by = 현재 로그인 유저'}</TaskMetaBadge>
-          </div>
 
-          <form className="grid gap-4 lg:grid-cols-2" onSubmit={handleCreateTask}>
             <label className="space-y-2 text-sm font-medium text-campus-700">
               <span>제목</span>
               <input
@@ -2152,55 +2527,118 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               </label>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
-              <Button type="submit" disabled={isCreatingTask}>
-                {isCreatingTask ? (isEditing ? '수정 중...' : '생성 중...') : isEditing ? 'Task 수정 저장' : 'Task 생성'}
+            {errorMessage && isTaskModalOpen && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600 lg:col-span-2">
+                {errorMessage}
+              </div>
+            )}
+
+            <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end lg:col-span-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className={stableGhostButtonClass}
+                onClick={closeTaskModal}
+                disabled={isCreatingTask || isDeletingTask}
+              >
+                취소
               </Button>
               {isEditing && (
-                <Button type="button" variant="ghost" className={stableGhostButtonClass} onClick={() => void handleDeleteTask()} disabled={isDeletingTask || isCreatingTask}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="border-rose-200 text-rose-600 hover:bg-rose-50 focus-visible:outline-rose-300"
+                  onClick={() => handleDeleteTaskRequest([editingTaskId])}
+                  disabled={isDeletingTask || isCreatingTask}
+                >
                   {isDeletingTask ? '삭제 중...' : 'Task 삭제'}
                 </Button>
               )}
-              <Button type="button" variant="ghost" className={stableGhostButtonClass} onClick={resetTaskForm} disabled={isCreatingTask || isDeletingTask}>
-                취소
+              <Button type="submit" disabled={isCreatingTask}>
+                {isCreatingTask ? (isEditing ? '수정 중...' : '생성 중...') : isEditing ? 'Task 수정 저장' : 'Task 생성'}
               </Button>
             </div>
           </form>
-        </Card>
+        </ModalFrame>
       )}
 
       <Card className="space-y-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
+        <div className="flex flex-col gap-4 xl:flex-row xl:justify-between xl:gap-6">
+          <div className="xl:self-start">
             <h3 className="font-display text-2xl text-campus-900">업무 보드</h3>
             <p className="mt-1 text-sm text-campus-500">Active와 Completed를 나눠 집중도를 유지하고, 필요한 Task만 빠르게 찾아볼 수 있습니다.</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-campus-100 px-3 py-1 text-xs font-medium text-campus-700 ring-1 ring-inset ring-campus-200">
+                Active는 진행 중인 업무 중심
+              </span>
+              <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-100">
+                Completed는 완료 기록 보관
+              </span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveView('active')}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-medium transition',
-                activeView === 'active'
-                  ? 'border border-brand-200 bg-brand-50 text-brand-700'
-                  : 'border border-campus-200 bg-white text-campus-600 hover:bg-white active:bg-white',
-              )}
-            >
-              Active Tasks
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveView('completed')}
-              className={cn(
-                'rounded-full px-4 py-2 text-sm font-medium transition',
-                activeView === 'completed'
-                  ? 'border border-brand-200 bg-brand-50 text-brand-700'
-                  : 'border border-campus-200 bg-white text-campus-600 hover:bg-white active:bg-white',
-              )}
-            >
-              Completed Tasks
-            </button>
+          <div className="flex flex-col gap-3 xl:items-end xl:self-end">
+            {isLeader && visibleTasks.length > 0 && (
+              <div className="flex flex-wrap items-center justify-end gap-2 rounded-[1.25rem] border border-campus-200 bg-campus-50/80 px-3 py-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={taskSelectionMode ? 'subtle' : 'ghost'}
+                  className={taskSelectionMode ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : stableGhostButtonClass}
+                  onClick={() => {
+                    const nextValue = !taskSelectionMode
+                    setTaskSelectionMode(nextValue)
+                    if (!nextValue) {
+                      setSelectedTaskIds([])
+                    }
+                  }}
+                >
+                  {taskSelectionMode ? '선택 모드 종료' : 'Task 선택 삭제'}
+                </Button>
+                {taskSelectionMode && (
+                  <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-campus-600 ring-1 ring-inset ring-campus-200">
+                    {selectedTaskIds.length === 0 ? '삭제할 Task를 선택하세요' : `${selectedTaskIds.length}개 선택됨`}
+                  </span>
+                )}
+                {taskSelectionMode && selectedTaskIds.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                    onClick={() => handleDeleteTaskRequest(selectedTaskIds)}
+                  >
+                    선택한 Task 삭제
+                  </Button>
+                )}
+              </div>
+            )}
+            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-[1.25rem] border border-campus-200 bg-white p-1 shadow-sm xl:w-auto">
+              <button
+                type="button"
+                onClick={() => setActiveView('active')}
+                className={cn(
+                  'flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition xl:flex-none',
+                  activeView === 'active'
+                    ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-inset ring-brand-100'
+                    : 'text-campus-600 hover:bg-campus-50',
+                )}
+              >
+                Active Tasks
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveView('completed')}
+                className={cn(
+                  'flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition xl:flex-none',
+                  activeView === 'completed'
+                    ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-inset ring-brand-100'
+                    : 'text-campus-600 hover:bg-campus-50',
+                )}
+              >
+                Completed Tasks
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2275,7 +2713,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         </Card>
       )}
 
-      {errorMessage && (
+      {errorMessage && !isTaskModalOpen && !todoDeleteIntent && (
         <Card className="border-rose-200 bg-rose-50">
           <p className="text-sm text-rose-600">{errorMessage}</p>
         </Card>
@@ -2303,7 +2741,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         <EmptyTaskState
           isLeader={isLeader}
           isCompletedView={activeView === 'completed'}
-          onCreate={() => setShowCreateForm(true)}
+          onCreate={() => {
+            resetTaskForm()
+            setShowCreateForm(true)
+          }}
           onRecommend={handleRecommendTasks}
           recommendDisabled={aiTaskGenerationDisabled}
           recommendLabel={aiTaskButtonLabel}
@@ -2319,6 +2760,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
             const hiddenTodoCount = Math.max(task.todos.length - todoPreviewItems.length, 0)
             const canEditTodos = canManageTodos(task)
             const canEditStatus = canChangeTaskStatus(task)
+            const isTodoSelectionMode = todoSelectionTaskIds[task.id] ?? false
+            const selectedTodoIds = selectedTodoIdsByTask[task.id] ?? []
+            const isTaskSelected = selectedTaskIds.includes(task.id)
             const aiTodoStatus = aiTodoStatuses[task.id] ?? null
             const aiTodoStatusValue = aiTodoStatus?.status ?? 'idle'
             const isAiTodoGenerating = aiTodoStatusValue === 'pending' || aiTodoStatusValue === 'running'
@@ -2344,10 +2788,21 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     : '관리자만 실행할 수 있으며, 같은 Task에는 5분 쿨타임이 적용됩니다.'
 
             return (
-              <Card key={task.id} className="space-y-4 p-5">
+              <Card key={task.id} className={cn('space-y-4 p-5', isTaskSelected && 'border-rose-200 ring-1 ring-rose-100')}>
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
+                      {isLeader && taskSelectionMode && (
+                        <label className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
+                          <input
+                            type="checkbox"
+                            checked={isTaskSelected}
+                            onChange={(event) => toggleTaskSelection(task.id, event.target.checked)}
+                            className="h-4 w-4 rounded border-rose-300 text-rose-500 focus:ring-rose-200"
+                          />
+                          선택
+                        </label>
+                      )}
                       <TaskMetaBadge tone={task.status === 'done' ? 'accent' : task.status === 'in_progress' ? 'brand' : 'neutral'}>
                         {taskStatusLabel(task.status)}
                       </TaskMetaBadge>
@@ -2479,6 +2934,33 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => setExpandedTasks((current) => ({ ...current, [task.id]: !isExpanded }))}>
                       {isExpanded ? '접기' : 'Todo 펼치기'}
                     </Button>
+                    {canEditTodos && task.todos.length > 0 && (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className={isTodoSelectionMode ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : stableGhostButtonClass}
+                          onClick={() => toggleTodoSelectionMode(task.id)}
+                          disabled={isSavingChanges}
+                        >
+                          {isTodoSelectionMode ? 'Todo 선택 취소' : 'Todo 선택 삭제'}
+                        </Button>
+                        {isTodoSelectionMode && selectedTodoIds.length > 0 && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                            onClick={() => handleSelectedTodosDeleteRequest(task)}
+                            disabled={isSavingChanges}
+                            aria-label={`선택한 Todo ${selectedTodoIds.length}개 삭제`}
+                          >
+                            선택한 Todo 삭제
+                          </Button>
+                        )}
+                      </>
+                    )}
                     {isLeader ? (
                       <Button
                         type="button"
@@ -2497,7 +2979,14 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-campus-500">{aiTodoHelpMessage}</p>
+                <div className="space-y-1">
+                  <p className="text-xs text-campus-500">{aiTodoHelpMessage}</p>
+                  {isTodoSelectionMode && canEditTodos && (
+                    <p className="text-xs text-rose-600">
+                      삭제할 Todo만 선택한 뒤 `선택한 Todo 삭제`를 눌러 잘못 만든 항목을 한 번에 지울 수 있습니다.
+                    </p>
+                  )}
+                </div>
 
                 {isExpanded && (
                   <div className="grid gap-4 xl:grid-cols-[1.35fr,0.85fr]">
@@ -2508,11 +2997,20 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                         </div>
                       ) : (
                         task.todos.map((todo) => (
-                          <label
+                          <div
                             key={todo.id}
-                            className="flex items-start gap-3 rounded-3xl border border-campus-200 bg-white px-4 py-3"
+                            className="group flex items-start gap-3 rounded-3xl border border-campus-200 bg-white px-4 py-3 transition-colors hover:border-campus-300"
                           >
-                            {canEditTodos ? (
+                            {canEditTodos && isTodoSelectionMode ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedTodoIds.includes(todo.id)}
+                                disabled={isSavingChanges}
+                                onChange={(event) => toggleTodoSelection(task.id, todo.id, event.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-rose-300 text-rose-500 focus:ring-rose-200"
+                                aria-label={`${todo.content} 삭제 선택`}
+                              />
+                            ) : canEditTodos ? (
                               <input
                                 type="checkbox"
                                 checked={todo.is_done}
@@ -2534,7 +3032,21 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                               </p>
                               <p className="mt-1 text-xs text-campus-500">추가 {formatDateTimeLabel(todo.created_at)}</p>
                             </div>
-                          </label>
+                            {canEditTodos && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="shrink-0 border-transparent px-2.5 text-campus-500 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                onClick={() => handleTodoDeleteRequest(task, todo)}
+                                disabled={isSavingChanges || isTodoSelectionMode}
+                                aria-label={`${todo.content} 삭제`}
+                                title="Todo 삭제"
+                              >
+                                삭제
+                              </Button>
+                            )}
+                          </div>
                         ))
                       )}
                     </div>
@@ -2598,7 +3110,94 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           })}
         </div>
       )}
+
+      <ModalFrame
+        open={taskDeleteIntent !== null}
+        title={taskDeleteIntent?.title ?? ''}
+        description={taskDeleteIntent?.description ?? ''}
+        onClose={() => {
+          if (isDeletingTask) {
+            return
+          }
+          setTaskDeleteIntent(null)
+        }}
+        closeOnBackdrop={!isDeletingTask}
+        closeOnEscape={!isDeletingTask}
+      >
+        <div className="space-y-5 px-6 py-6 sm:px-8">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Task 삭제는 연결된 Todo까지 함께 제거합니다. 이 작업은 되돌릴 수 없습니다.
+          </div>
+          {errorMessage && taskDeleteIntent && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+              {errorMessage}
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              className={stableGhostButtonClass}
+              onClick={() => setTaskDeleteIntent(null)}
+              disabled={isDeletingTask}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              className="bg-rose-500 text-white shadow-none hover:bg-rose-600 focus-visible:outline-rose-300"
+              onClick={() => void handleConfirmTaskDelete()}
+              disabled={isDeletingTask}
+            >
+              {isDeletingTask ? '삭제 중...' : taskDeleteIntent?.confirmLabel ?? '삭제'}
+            </Button>
+          </div>
+        </div>
+      </ModalFrame>
+
+      <ModalFrame
+        open={todoDeleteIntent !== null}
+        title={todoDeleteIntent?.title ?? ''}
+        description={todoDeleteIntent?.description ?? ''}
+        onClose={() => {
+          if (isSavingChanges) {
+            return
+          }
+          setTodoDeleteIntent(null)
+        }}
+        closeOnBackdrop={!isSavingChanges}
+        closeOnEscape={!isSavingChanges}
+      >
+        <div className="space-y-5 px-6 py-6 sm:px-8">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            삭제는 되돌릴 수 없습니다.
+          </div>
+          {errorMessage && todoDeleteIntent && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+              {errorMessage}
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              className={stableGhostButtonClass}
+              onClick={() => setTodoDeleteIntent(null)}
+              disabled={isSavingChanges}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              className="bg-rose-500 text-white shadow-none hover:bg-rose-600 focus-visible:outline-rose-300"
+              onClick={() => void handleConfirmTodoDelete()}
+              disabled={isSavingChanges}
+            >
+              {todoDeleteIntent?.confirmLabel ?? '삭제'}
+            </Button>
+          </div>
+        </div>
+      </ModalFrame>
     </div>
   )
 }
-

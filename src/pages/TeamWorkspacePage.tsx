@@ -1,13 +1,14 @@
-﻿import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
-import { useAuth } from '../features/auth/context/AuthContext'
+import { useAuth } from '../features/auth/context/useAuth'
+import { ProjectDirectionOverviewPanel } from '../features/teams/components/ProjectDirectionOverviewPanel'
 import { TeamCalendarTab } from '../features/teams/components/TeamCalendarTab'
 import { TeamHeader } from '../features/teams/components/TeamHeader'
 import { TeamMembersTab } from '../features/teams/components/TeamMembersTab'
 import { TeamOverviewTab } from '../features/teams/components/TeamOverviewTab'
-import { TeamPMTab } from '../features/teams/components/TeamPMTab'
+import { TeamPMTab, type PMAssistantTabKey } from '../features/teams/components/TeamPMTab'
 import { TeamTabs, type TeamWorkspaceTabKey } from '../features/teams/components/TeamTabs'
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
 import {
@@ -26,6 +27,7 @@ import type {
 export function TeamWorkspacePage() {
   const { teamId } = useParams<{ teamId: string }>()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
 
   const requestedTab = searchParams.get('tab')
@@ -36,6 +38,14 @@ export function TeamWorkspacePage() {
     requestedTab === 'pm'
       ? requestedTab
       : 'overview'
+
+  const requestedAssistant = searchParams.get('assistant')
+  const initialAssistantTab: PMAssistantTabKey =
+    requestedAssistant === 'meeting-actionizer' ||
+    requestedAssistant === 'report-writer' ||
+    requestedAssistant === 'direction'
+      ? requestedAssistant
+      : 'direction'
 
   const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>(initialTab)
   const [baseData, setBaseData] = useState<TeamWorkspaceBase | null>(null)
@@ -78,19 +88,18 @@ export function TeamWorkspacePage() {
         setSkillsLoaded(true)
       } catch (error: unknown) {
         if (!isMounted) return
-      
-        let detail = ''
-      
-        if (error instanceof Error) {
-          detail = error.message
-        } else if (typeof error === 'object' && error !== null && 'message' in error) {
-          detail = String((error as { message?: unknown }).message ?? '')
-        }
-      
+
+        const detail =
+          error instanceof Error
+            ? error.message
+            : typeof error === 'object' && error !== null && 'message' in error
+              ? String((error as { message?: unknown }).message ?? '')
+              : ''
+
         setBaseError(
           detail
             ? `팀 정보를 불러오지 못했습니다. (${detail})`
-            : '팀 정보를 불러오지 못했습니다.'
+            : '팀 정보를 불러오지 못했습니다.',
         )
       } finally {
         if (isMounted) {
@@ -143,7 +152,6 @@ export function TeamWorkspacePage() {
             setIsTabLoading(true)
             await Promise.all(jobs)
           }
-
           return
         }
 
@@ -176,6 +184,16 @@ export function TeamWorkspacePage() {
   const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
   const leaderName =
     baseData?.leader?.full_name || baseData?.leader?.email || baseData?.leader?.id || '미지정'
+
+  function openPMAssistantTab(tab: PMAssistantTabKey) {
+    if (!teamId) return
+    setActiveTab('pm')
+    navigate(`/teams/${teamId}?tab=pm&assistant=${tab}`)
+  }
+
+  function openWorkspaceTab(tab: TeamWorkspaceTabKey) {
+    setActiveTab(tab)
+  }
 
   if (isBaseLoading) {
     return (
@@ -219,7 +237,7 @@ export function TeamWorkspacePage() {
         team={baseData.team}
         leaderName={leaderName}
         isLeader={isLeader}
-        onOpenPM={() => setActiveTab('pm')}
+        onOpenPM={() => openPMAssistantTab('direction')}
       />
 
       <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
@@ -249,18 +267,34 @@ export function TeamWorkspacePage() {
                   isLoading={isTabLoading}
                   errorMessage={tabError}
                   isLeader={isLeader}
-                  onOpenMembers={() => setActiveTab('members')}
+                  onOpenMembers={() => openWorkspaceTab('members')}
                 />
               )}
+
               {activeTab === 'members' && <TeamMembersTab members={members} isLeader={isLeader} />}
+
               {activeTab === 'tasks' && teamId && (
-                <TeamTasksTab
-                  teamId={teamId}
-                  currentUserId={user?.id ?? null}
-                  currentUserRole={(baseData?.current_user_role ?? null) as TeamMemberRole | null}
-                  members={members}
-                />
+                <div className="space-y-4">
+                  <ProjectDirectionOverviewPanel
+                    teamId={teamId}
+                    currentUserId={user?.id ?? null}
+                    title="AI 방향 제안"
+                    subtitle="업무 흐름을 바탕으로 저장된 방향 제안을 보여드려요. 아직 없다면 PM Assistant에서 생성할 수 있습니다."
+                    emptyActionLabel="방향 제안 받으러 가기"
+                    collapsible
+                    onOpenAssistant={() => openPMAssistantTab('direction')}
+                    onOpenTasks={() => openWorkspaceTab('tasks')}
+                    onOpenCalendar={() => openWorkspaceTab('calendar')}
+                  />
+                  <TeamTasksTab
+                    teamId={teamId}
+                    currentUserId={user?.id ?? null}
+                    currentUserRole={(baseData.current_user_role ?? null) as TeamMemberRole | null}
+                    members={members}
+                  />
+                </div>
               )}
+
               {activeTab === 'calendar' && teamId && (
                 <TeamCalendarTab
                   teamId={teamId}
@@ -268,13 +302,16 @@ export function TeamWorkspacePage() {
                   isLeader={Boolean(isLeader)}
                 />
               )}
+
               {activeTab === 'pm' && teamId && (
                 <TeamPMTab
                   teamId={teamId}
                   currentUserId={user?.id ?? null}
                   isLeader={Boolean(isLeader)}
                   members={members}
-                  onOpenTasks={() => setActiveTab('tasks')}
+                  onOpenTasks={() => openWorkspaceTab('tasks')}
+                  onOpenCalendar={() => openWorkspaceTab('calendar')}
+                  initialTab={initialAssistantTab}
                 />
               )}
             </>

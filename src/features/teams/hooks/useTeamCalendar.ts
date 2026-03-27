@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createCalendarEvent,
+  deleteCalendarEvents,
   fetchTeamCalendarEvents,
   updateCalendarEvent,
 } from '../lib/teamCalendar'
@@ -210,6 +211,38 @@ export function useTeamCalendar(params: {
     [currentUserId, isLeader, teamId],
   )
 
+  const removeEvents = useCallback(
+    async (eventIds: string[]) => {
+      if (!isLeader) {
+        throw new Error('일정 삭제는 팀 리더만 할 수 있습니다.')
+      }
+
+      if (eventIds.length === 0) {
+        return []
+      }
+
+      setIsSubmitting(true)
+      setErrorMessage('')
+      setFeedbackMessage('')
+
+      try {
+        const deletedIds = await deleteCalendarEvents(eventIds)
+        setEvents((current) => current.filter((event) => !deletedIds.includes(event.id)))
+        setFeedbackMessage(
+          deletedIds.length === 1 ? '일정을 삭제했습니다.' : `${deletedIds.length}개의 일정을 삭제했습니다.`,
+        )
+        return deletedIds
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '일정을 삭제하지 못했습니다.'
+        setErrorMessage(message)
+        throw error
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    [isLeader],
+  )
+
   return {
     events,
     groupedEvents,
@@ -219,6 +252,7 @@ export function useTeamCalendar(params: {
     isSubmitting,
     loadEvents,
     saveEvent,
+    removeEvents,
     setErrorMessage,
     setFeedbackMessage,
   }

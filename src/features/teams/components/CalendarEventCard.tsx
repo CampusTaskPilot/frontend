@@ -37,14 +37,43 @@ interface CalendarEventCardProps {
   event: TeamCalendarEventRecord
   isLeader: boolean
   onEdit: (event: TeamCalendarEventRecord) => void
+  isSelectionMode?: boolean
+  isSelected?: boolean
+  onSelectToggle?: (eventId: string, checked: boolean) => void
+  onDelete?: (event: TeamCalendarEventRecord) => void
 }
 
-export function CalendarEventCard({ event, isLeader, onEdit }: CalendarEventCardProps) {
+export function CalendarEventCard({
+  event,
+  isLeader,
+  onEdit,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectToggle,
+  onDelete,
+}: CalendarEventCardProps) {
   return (
-    <Card className="space-y-4 rounded-[28px] border-campus-200 bg-white/90 p-5 shadow-sm">
+    <Card
+      className={cn(
+        'space-y-4 rounded-[28px] border-campus-200 bg-white/90 p-5 shadow-sm',
+        isSelected && 'border-rose-200 ring-1 ring-rose-100',
+      )}
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
+            {isLeader && isSelectionMode && (
+              <label className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(eventObject) => onSelectToggle?.(event.id, eventObject.target.checked)}
+                  className="h-4 w-4 rounded border-rose-300 text-rose-500 focus:ring-rose-200"
+                  aria-label={`${event.title} 삭제 선택`}
+                />
+                선택
+              </label>
+            )}
             <span
               className={cn(
                 'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset',
@@ -67,9 +96,21 @@ export function CalendarEventCard({ event, isLeader, onEdit }: CalendarEventCard
         </div>
 
         {isLeader && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => onEdit(event)}>
-            수정
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Button type="button" size="sm" variant="ghost" onClick={() => onEdit(event)}>
+              수정
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="border-rose-200 text-rose-600 hover:bg-rose-50"
+              onClick={() => onDelete?.(event)}
+              disabled={isSelectionMode}
+            >
+              삭제
+            </Button>
+          </div>
         )}
       </div>
     </Card>
