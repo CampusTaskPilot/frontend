@@ -126,6 +126,107 @@ function metricValue(value: string) {
   return value.length > 0 ? value : '-'
 }
 
+function normalizeImageSrc(value: string | null | undefined) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (trimmed === 'null' || trimmed === 'undefined') return null
+  return trimmed
+}
+
+function TeamCoverImageFallback({
+  teamName,
+  category,
+  summary,
+}: {
+  teamName: string
+  category: string | null
+  summary: string | null
+}) {
+  return (
+    <div className="absolute inset-0 bg-[linear-gradient(145deg,#eef4ff_0%,#dfeeff_48%,#f7fbff_100%)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(88,112,255,0.22),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(18,198,170,0.18),transparent_30%)]" />
+      <div className="absolute left-4 top-4 h-24 w-24 rounded-full bg-brand-200/35 blur-2xl" />
+      <div className="absolute bottom-4 right-4 h-24 w-24 rounded-full bg-accent-200/30 blur-2xl" />
+
+      <div className="relative flex h-full flex-col items-center justify-center px-6 py-8 text-center">
+        <div className="inline-flex h-20 w-20 items-center justify-center rounded-[1.8rem] border border-brand-200 bg-white/90 text-3xl font-semibold text-brand-700 shadow-[0_10px_30px_rgba(53,93,255,0.16)]">
+          {teamInitial(teamName)}
+        </div>
+
+        <div className="mt-5 max-w-[15rem] space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-600">
+            Team Image Placeholder
+          </p>
+          <p className="break-words font-display text-xl font-semibold leading-tight text-campus-900">
+            {teamName}
+          </p>
+          <p className="text-sm leading-6 text-campus-600" style={summaryClampStyle}>
+            {summary?.trim() || '팀 이미지를 등록하면 이 영역에 대표 이미지가 표시됩니다.'}
+          </p>
+          {category && (
+            <div className="pt-1">
+              <span className="inline-flex rounded-full border border-brand-100 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-700">
+                {category}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TeamCoverImageContent({
+  src,
+  teamName,
+  category,
+  summary,
+  imageClassName,
+}: {
+  src?: string
+  teamName: string
+  category: string | null
+  summary: string | null
+  imageClassName?: string
+}) {
+  const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const showImage = Boolean(src) && !failed
+
+  if (!showImage) {
+    return <TeamCoverImageFallback teamName={teamName} category={category} summary={summary} />
+  }
+
+  return (
+    <>
+      {!loaded && <div className="absolute inset-0 animate-pulse bg-campus-200/70" aria-hidden="true" />}
+      <img
+        src={src}
+        alt={imageAlt(teamName)}
+        className={cn(
+          'absolute inset-0 h-full w-full object-cover object-center transition duration-500',
+          loaded ? 'opacity-100' : 'opacity-0',
+          imageClassName,
+        )}
+        onLoad={() => {
+          if (import.meta.env.DEV) {
+            console.debug('[TeamCoverImage] load success', { src })
+          }
+          setLoaded(true)
+        }}
+        onError={() => {
+          if (import.meta.env.DEV) {
+            console.error('[TeamCoverImage] load failed', { src })
+          }
+          setFailed(true)
+          setLoaded(true)
+        }}
+      />
+    </>
+  )
+}
+
 function TeamCoverImage({
   src,
   teamName,
@@ -141,57 +242,18 @@ function TeamCoverImage({
   className?: string
   imageClassName?: string
 }) {
-  const [loaded, setLoaded] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const showImage = Boolean(src) && !failed
+  const normalizedSrc = normalizeImageSrc(src)
 
   return (
     <div className={cn('relative h-full w-full overflow-hidden', className)}>
-      {!loaded && showImage && <div className="absolute inset-0 animate-pulse bg-campus-200/70" aria-hidden="true" />}
-
-      {showImage ? (
-        <img
-          src={src ?? ''}
-          alt={imageAlt(teamName)}
-          className={cn(
-            'absolute inset-0 h-full w-full object-cover object-center transition duration-500',
-            loaded ? 'opacity-100' : 'opacity-0',
-            imageClassName,
-          )}
-          onLoad={() => setLoaded(true)}
-          onError={() => {
-            setFailed(true)
-            setLoaded(true)
-          }}
-        />
-      ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(88,112,255,0.52),transparent_32%),radial-gradient(circle_at_82%_20%,rgba(18,198,170,0.28),transparent_28%),linear-gradient(150deg,#172033_0%,#22304a_52%,#101827_100%)]">
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0))]" />
-          <div className="absolute -left-12 bottom-0 h-40 w-40 rounded-full bg-brand-300/10 blur-3xl" />
-          <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-white/5 blur-3xl" />
-          <div className="relative flex h-full flex-col justify-between p-6 text-white sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <div className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] border border-white/15 bg-white/10 text-2xl font-semibold backdrop-blur">
-                {teamInitial(teamName)}
-              </div>
-              {category && (
-                <span className="max-w-[55%] rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/82 backdrop-blur">
-                  {category}
-                </span>
-              )}
-            </div>
-
-            <div className="max-w-[24rem] space-y-3">
-              <p className="break-words font-display text-[1.7rem] font-semibold leading-tight text-white sm:text-[1.95rem]">
-                {teamName}
-              </p>
-              <p className="text-sm leading-6 text-white/78" style={summaryClampStyle}>
-                {sanitizedSummary(summary)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      <TeamCoverImageContent
+        key={normalizedSrc ?? '__fallback__'}
+        src={normalizedSrc ?? undefined}
+        teamName={teamName}
+        category={category}
+        summary={summary}
+        imageClassName={imageClassName}
+      />
     </div>
   )
 }
@@ -521,8 +583,19 @@ export function TeamProfileHero({
           </div>
 
           <aside className="shrink-0 p-5 sm:p-6 xl:p-8">
-            <div className="flex h-full flex-col gap-4">
-              <div className="overflow-hidden rounded-[1.75rem] border border-campus-200 bg-campus-100">
+            <div className="flex h-full flex-col gap-4 rounded-[1.8rem] border border-brand-100/70 bg-[linear-gradient(180deg,rgba(247,250,255,0.96)_0%,rgba(240,246,255,0.98)_100%)] p-3 shadow-[0_20px_48px_rgba(53,93,255,0.10)]">
+              <div className="overflow-hidden rounded-[1.55rem] border border-brand-200/70 bg-campus-100 shadow-[0_18px_40px_rgba(15,23,42,0.10)] ring-1 ring-white/80">
+                <div className="flex items-center justify-between border-b border-brand-100/70 bg-white px-4 py-3.5">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-600">Team Image</p>
+                    <p className="mt-1 text-sm font-semibold text-campus-900">
+                      {team.image_url ? '대표 이미지' : '기본 커버 표시 중'}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-700">
+                    {team.image_url ? 'Image On' : 'Fallback'}
+                  </span>
+                </div>
                 <div className="relative aspect-[5/4] min-h-[260px] w-full">
                   <TeamCoverImage
                     key={team.image_url ?? 'hero-preview'}
@@ -536,8 +609,9 @@ export function TeamProfileHero({
                 </div>
               </div>
 
-              <div className="rounded-[1.35rem] border border-campus-200/80 bg-white/84 px-4 py-4">
+              <div className="rounded-[1.35rem] border border-campus-200/80 bg-white/92 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <p className="text-sm font-semibold text-campus-900">Actions</p>
+                <p className="mt-1 text-xs leading-5 text-campus-500">이미지 카드 아래에서 바로 팀 관리 액션을 사용할 수 있습니다.</p>
                 <div className="mt-4 flex flex-col gap-2">
                   {isLeader && (
                     <Button type="button" onClick={openEditor}>
