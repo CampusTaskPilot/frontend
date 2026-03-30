@@ -1,6 +1,7 @@
-﻿import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
+import { TeamProfileHero } from './TeamProfileHero'
 import type {
+  ProfileSummary,
   TeamMemberRole,
   TeamMemberWithProfile,
   TeamRecord,
@@ -10,13 +11,16 @@ import type {
 
 interface TeamOverviewTabProps {
   team: TeamRecord
+  leader: ProfileSummary | null
   members: TeamMemberWithProfile[]
   skills: TeamSkillTag[]
   tasks: TeamTaskItem[]
   isLoading: boolean
   errorMessage: string
   isLeader: boolean
+  currentUserId: string | null
   onOpenMembers: () => void
+  onTeamUpdated: (payload: { team: TeamRecord; skills: TeamSkillTag[] }) => void
 }
 
 function isLeaderRole(role: TeamMemberRole) {
@@ -43,10 +47,6 @@ function createdDateLabel(createdAt: string) {
   }).format(date)
 }
 
-function statusLabel(team: TeamRecord) {
-  return team.is_recruiting ? 'Recruiting' : 'Closed'
-}
-
 function MemberAvatar({ member }: { member: TeamMemberWithProfile }) {
   const profileImageUrl = member.profile?.profile_image_url ?? null
   const initial = displayName(member).trim().charAt(0).toUpperCase() || 'U'
@@ -68,15 +68,48 @@ function MemberAvatar({ member }: { member: TeamMemberWithProfile }) {
   )
 }
 
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <Card className="overflow-hidden p-0">
+        <div className="grid lg:grid-cols-[320px,1fr]">
+          <div className="min-h-[280px] bg-campus-200" />
+          <div className="space-y-5 p-6 md:p-8">
+            <div className="h-4 w-28 rounded-full bg-campus-200" />
+            <div className="h-10 w-2/3 rounded-2xl bg-campus-200" />
+            <div className="space-y-2">
+              <div className="h-4 w-full rounded-full bg-campus-100" />
+              <div className="h-4 w-11/12 rounded-full bg-campus-100" />
+              <div className="h-4 w-3/4 rounded-full bg-campus-100" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-2xl border border-campus-200 bg-white/80 px-4 py-3">
+                  <div className="h-3 w-20 rounded-full bg-campus-100" />
+                  <div className="mt-3 h-6 w-24 rounded-full bg-campus-200" />
+                  <div className="mt-2 h-3 w-24 rounded-full bg-campus-100" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 export function TeamOverviewTab({
   team,
+  leader,
   members,
   skills,
   tasks,
   isLoading,
   errorMessage,
   isLeader,
+  currentUserId,
   onOpenMembers,
+  onTeamUpdated,
 }: TeamOverviewTabProps) {
   const sortedMembers = [...members].sort((a, b) => {
     const aLeader = a.user_id === team.leader_id || isLeaderRole(a.role)
@@ -86,107 +119,72 @@ export function TeamOverviewTab({
     return 0
   })
 
-  const leaderName =
-    sortedMembers.find((member) => member.user_id === team.leader_id || isLeaderRole(member.role))?.profile
-      ?.full_name ??
-    sortedMembers.find((member) => member.user_id === team.leader_id || isLeaderRole(member.role))?.profile
-      ?.email ??
-    sortedMembers.find((member) => member.user_id === team.leader_id || isLeaderRole(member.role))?.user_id ??
-    'Unknown'
-
   const summaryCards = [
     {
-      label: 'Members',
-      value: `${members.length}`,
-      description: 'Team participants',
+      label: '충원 현황',
+      value: `${members.length}/${team.max_members || '-'}`,
+      description: team.is_recruiting ? '현재 팀원을 모집 중입니다.' : '현재 모집은 마감된 상태입니다.',
     },
     {
-      label: 'Skills',
-      value: `${skills.length}`,
-      description: 'Linked stack tags',
+      label: '기술 스택',
+      value: `${skills.length}개`,
+      description: skills.length > 0 ? 'Overview 헤더에 연결된 대표 스택입니다.' : '아직 연결된 스택이 없습니다.',
     },
     {
-      label: 'Created',
+      label: '생성일',
       value: createdDateLabel(team.created_at),
-      description: 'Workspace start date',
+      description: '팀 워크스페이스가 만들어진 날짜입니다.',
     },
     {
-      label: 'Tasks (Soon)',
-      value: `${tasks.length}`,
-      description: 'Placeholder for task metrics',
+      label: '작업 준비',
+      value: `${tasks.length}개`,
+      description: tasks.length > 0 ? 'Overview에서 연결된 작업 수입니다.' : '아직 연결된 작업이 없습니다.',
     },
   ]
 
   return (
     <div className="space-y-4">
-      {isLoading && (
-        <Card>
-          <p className="text-sm text-campus-600">Overview 데이터를 불러오는 중입니다...</p>
-        </Card>
-      )}
+      {isLoading && <OverviewSkeleton />}
 
       {!isLoading && errorMessage && (
         <Card className="border-rose-200 bg-rose-50">
           <p className="text-sm text-rose-600">
-            {errorMessage} 권한(RLS) 정책으로 조회가 제한될 수 있습니다.
+            {errorMessage} 권한(RLS) 정책이나 연결 상태로 인해 일부 데이터 조회가 제한될 수 있습니다.
           </p>
         </Card>
       )}
 
       {!isLoading && !errorMessage && (
         <>
+          <TeamProfileHero
+            team={team}
+            leader={leader}
+            members={members}
+            skills={skills}
+            isLeader={isLeader}
+            currentUserId={currentUserId}
+            onOpenMembers={onOpenMembers}
+            onTeamUpdated={onTeamUpdated}
+          />
+
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {summaryCards.map((card) => (
-              <Card key={card.label} className="p-4">
-                <p className="text-xs text-campus-500">{card.label}</p>
-                <p className="mt-1 text-2xl font-semibold text-campus-900">{card.value}</p>
-                <p className="mt-1 text-xs text-campus-500">{card.description}</p>
+              <Card key={card.label} className="border border-campus-200/80 bg-white/85 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-campus-500">{card.label}</p>
+                <p className="mt-2 text-2xl font-semibold text-campus-900">{card.value}</p>
+                <p className="mt-2 text-xs leading-5 text-campus-500">{card.description}</p>
               </Card>
             ))}
           </div>
 
-          <Card className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-2xl text-campus-900">Team Info</h2>
-              <div className="flex flex-wrap gap-2">
-                {isLeader && (
-                  <Button type="button" variant="ghost">
-                    팀 설정 수정
-                  </Button>
-                )}
-                <Button type="button" variant="ghost" onClick={onOpenMembers}>
-                  멤버 관리로 이동
-                </Button>
+          <Card className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl text-campus-900">Team Members</h2>
+                <p className="mt-1 text-sm text-campus-500">리더가 상단에 오도록 정렬해 팀 구성을 빠르게 파악할 수 있습니다.</p>
               </div>
             </div>
-            <div className="grid gap-2 text-sm text-campus-700 md:grid-cols-2">
-              <p>
-                팀 이름: <span className="font-medium text-campus-900">{team.name}</span>
-              </p>
-              <p>
-                팀 상태: <span className="font-medium text-campus-900">{statusLabel(team)}</span>
-              </p>
-              <p className="md:col-span-2">
-                팀 요약: <span className="font-medium text-campus-900">{team.summary}</span>
-              </p>
-              <p className="md:col-span-2">
-                팀 설명: <span className="font-medium text-campus-900">{team.description || '-'}</span>
-              </p>
-              <p>
-                생성일: <span className="font-medium text-campus-900">{createdDateLabel(team.created_at)}</span>
-              </p>
-              <p>
-                팀 멤버 수: <span className="font-medium text-campus-900">{members.length}명</span>
-              </p>
-              <p>
-                Leader: <span className="font-medium text-campus-900">{leaderName}</span>
-              </p>
-              
-            </div>
-          </Card>
 
-          <Card className="space-y-3">
-            <h2 className="font-display text-2xl text-campus-900">Team Members</h2>
             {sortedMembers.length === 0 ? (
               <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-4 text-sm text-campus-500">
                 아직 팀 멤버가 없습니다.
@@ -194,11 +192,11 @@ export function TeamOverviewTab({
             ) : (
               <div className="space-y-2">
                 {sortedMembers.map((member) => {
-                  const leader = member.user_id === team.leader_id || isLeaderRole(member.role)
+                  const leaderMember = member.user_id === team.leader_id || isLeaderRole(member.role)
                   return (
                     <div
                       key={`${member.team_id}-${member.user_id}`}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-3"
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-3 transition hover:border-brand-200 hover:bg-white"
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <MemberAvatar member={member} />
@@ -211,7 +209,7 @@ export function TeamOverviewTab({
                       <span
                         className={[
                           'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold',
-                          leader ? 'bg-emerald-50 text-emerald-700' : 'bg-campus-100 text-campus-700',
+                          leaderMember ? 'bg-emerald-50 text-emerald-700' : 'bg-campus-100 text-campus-700',
                         ].join(' ')}
                       >
                         {roleLabel(member.role)}
@@ -219,26 +217,6 @@ export function TeamOverviewTab({
                     </div>
                   )
                 })}
-              </div>
-            )}
-          </Card>
-
-          <Card className="space-y-3">
-            <h2 className="font-display text-2xl text-campus-900">Team Skills</h2>
-            {skills.length === 0 ? (
-              <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-4 text-sm text-campus-500">
-                연결된 팀 스킬이 아직 없습니다.
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {skills.map((skill) => (
-                  <span
-                    key={skill.id}
-                    className="inline-flex items-center rounded-full bg-campus-100 px-3 py-1 text-xs font-semibold text-campus-700 ring-1 ring-inset ring-campus-200"
-                  >
-                    {skill.name}
-                  </span>
-                ))}
               </div>
             )}
           </Card>

@@ -16,6 +16,7 @@ export interface TeamRecord {
   name: string
   summary: string
   description: string | null
+  image_url: string | null
   max_members: number
   category: string | null
   is_recruiting: boolean
