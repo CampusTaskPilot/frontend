@@ -282,6 +282,7 @@ export function TeamWorkspacePage() {
                     subtitle="업무 흐름을 바탕으로 저장된 방향 제안을 보여드려요. 아직 없다면 PM Assistant에서 생성할 수 있습니다."
                     emptyActionLabel="방향 제안 받으러 가기"
                     collapsible
+                    defaultCollapsed
                     onOpenAssistant={() => openPMAssistantTab('direction')}
                     onOpenTasks={() => openWorkspaceTab('tasks')}
                     onOpenCalendar={() => openWorkspaceTab('calendar')}
