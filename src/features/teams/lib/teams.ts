@@ -1,4 +1,4 @@
-import { supabase } from '../../../lib/supabase'
+﻿import { supabase } from '../../../lib/supabase'
 import { extractTeamImagePath, removeTeamImageByPath, uploadTeamImage } from './teamProfileImages'
 import type {
   ProfileSummary,
@@ -9,6 +9,7 @@ import type {
   TeamListItem,
   TeamMemberRecord,
   TeamMemberRole,
+  TeamMemberSkillTag,
   TeamMemberWithProfile,
   TeamRecord,
   TeamSkillTag,
@@ -78,6 +79,28 @@ function toTeamSkillTag(value: unknown): TeamSkillTag {
   }
 }
 
+function toTeamMemberSkillTag(value: unknown, skillNameById: Map<number, string>): {
+  profile_id: string
+  skill: TeamMemberSkillTag | null
+} {
+  const row = value as Record<string, unknown>
+  const profileId = String(row.profile_id ?? '')
+  const skillId = Number(row.skill_id ?? 0)
+  const skillName = skillNameById.get(skillId) ?? ''
+
+  return {
+    profile_id: profileId,
+    skill:
+      profileId && skillId > 0 && skillName
+        ? {
+            id: skillId,
+            name: skillName,
+            level: typeof row.level === 'string' ? row.level : null,
+          }
+        : null,
+  }
+}
+
 function uniqueNumbers(values: number[]) {
   return Array.from(new Set(values.filter((value) => Number.isFinite(value) && value > 0)))
 }
@@ -93,6 +116,18 @@ function displayRole(role: TeamMemberRole) {
 function normalizeOptionalText(value: string) {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+function describeError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) {
+      return message
+    }
+  }
+  return fallback
 }
 
 export async function fetchSkillOptions() {
@@ -181,13 +216,34 @@ export async function fetchTeamMembers(teamId: string) {
   const members = ((membersResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
   const profileIds = Array.from(new Set(members.map((member) => member.user_id))).filter(Boolean)
 
-  const profilesResult =
+  const [profilesResult, profileSkillsResult] = await Promise.all([
     profileIds.length > 0
-      ? await supabase.from('profiles').select('id,full_name,email,profile_image_url').in('id', profileIds)
-      : { data: [], error: null }
+      ? supabase.from('profiles').select('id,full_name,email,profile_image_url').in('id', profileIds)
+      : Promise.resolve({ data: [], error: null }),
+    profileIds.length > 0
+      ? supabase.from('profile_skills').select('profile_id,skill_id,level').in('profile_id', profileIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
 
   if (profilesResult.error) {
     throw profilesResult.error
+  }
+
+  if (profileSkillsResult.error) {
+    throw profileSkillsResult.error
+  }
+
+  const memberSkillIds = uniqueSkillIds(
+    ((profileSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((item) => Number(item.skill_id ?? 0)),
+  )
+
+  const memberSkillsResult =
+    memberSkillIds.length > 0
+      ? await supabase.from('skills').select('id,name').in('id', memberSkillIds).order('name')
+      : { data: [], error: null }
+
+  if (memberSkillsResult.error) {
+    throw memberSkillsResult.error
   }
 
   const profileMap = new Map<string, ProfileSummary>(
@@ -197,9 +253,26 @@ export async function fetchTeamMembers(teamId: string) {
     }),
   )
 
+  const skillNameById = new Map<number, string>(
+    ((memberSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((skill) => [
+      Number(skill.id ?? 0),
+      String(skill.name ?? ''),
+    ]),
+  )
+
+  const skillsByProfileId = new Map<string, TeamMemberSkillTag[]>()
+  ;((profileSkillsResult.data ?? []) as unknown[]).forEach((item) => {
+    const parsed = toTeamMemberSkillTag(item, skillNameById)
+    if (!parsed.skill) return
+    const current = skillsByProfileId.get(parsed.profile_id) ?? []
+    current.push(parsed.skill)
+    skillsByProfileId.set(parsed.profile_id, current)
+  })
+
   return members.map((member) => ({
     ...member,
     profile: profileMap.get(member.user_id) ?? null,
+    skills: skillsByProfileId.get(member.user_id) ?? [],
   }))
 }
 
@@ -372,9 +445,48 @@ export async function fetchTeamDetail(teamId: string, userId: string | null): Pr
     }),
   )
 
+  const profileSkillsResult =
+    profileIds.length > 0
+      ? await supabase.from('profile_skills').select('profile_id,skill_id,level').in('profile_id', profileIds)
+      : { data: [], error: null }
+
+  if (profileSkillsResult.error) {
+    throw profileSkillsResult.error
+  }
+
+  const memberSkillIds = uniqueSkillIds(
+    ((profileSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((item) => Number(item.skill_id ?? 0)),
+  )
+
+  const memberSkillsResult =
+    memberSkillIds.length > 0
+      ? await supabase.from('skills').select('id,name').in('id', memberSkillIds).order('name')
+      : { data: [], error: null }
+
+  if (memberSkillsResult.error) {
+    throw memberSkillsResult.error
+  }
+
+  const memberSkillNameById = new Map<number, string>(
+    ((memberSkillsResult.data ?? []) as Array<Record<string, unknown>>).map((skill) => [
+      Number(skill.id ?? 0),
+      String(skill.name ?? ''),
+    ]),
+  )
+
+  const skillsByProfileId = new Map<string, TeamMemberSkillTag[]>()
+  ;((profileSkillsResult.data ?? []) as unknown[]).forEach((item) => {
+    const parsed = toTeamMemberSkillTag(item, memberSkillNameById)
+    if (!parsed.skill) return
+    const current = skillsByProfileId.get(parsed.profile_id) ?? []
+    current.push(parsed.skill)
+    skillsByProfileId.set(parsed.profile_id, current)
+  })
+
   const membersWithProfile: TeamMemberWithProfile[] = members.map((member) => ({
     ...member,
     profile: profileMap.get(member.user_id) ?? null,
+    skills: skillsByProfileId.get(member.user_id) ?? [],
   }))
 
   const currentUserRole =
@@ -461,7 +573,7 @@ export async function joinTeam(teamId: string, userId: string) {
   }
 
   if (!teamResult.data) {
-    throw new Error('?�??찾을 ???�습?�다.')
+    throw new Error('???李얠쓣 ???놁뒿?덈떎.')
   }
 
   const team = teamResult.data as Record<string, unknown>
@@ -475,11 +587,11 @@ export async function joinTeam(teamId: string, userId: string) {
   }
 
   if (!isRecruiting) {
-    throw new Error('?�재 모집???�힌 ?�?�니??')
+    throw new Error('?꾩옱 紐⑥쭛???ロ엺 ??낅땲??')
   }
 
   if (maxMembers !== null && members.length >= maxMembers) {
-    throw new Error('최�? ?�원???�달???�?�니??')
+    throw new Error('理쒕? ?몄썝???꾨떖????낅땲??')
   }
 
   const { error } = await supabase.from('team_members').insert({
@@ -583,7 +695,7 @@ export async function updateTeamProfile(params: {
   const normalizedSkillIds = uniqueSkillIds(skillIds)
 
   const [teamAccessResult, membershipResult] = await Promise.all([
-    supabase.from('teams').select('id,leader_id,image_url').eq('id', teamId).maybeSingle(),
+    supabase.from('teams').select(TEAM_SELECT_COLUMNS).eq('id', teamId).maybeSingle(),
     supabase.from('team_members').select('role').eq('team_id', teamId).eq('user_id', userId).maybeSingle(),
   ])
 
@@ -623,10 +735,14 @@ export async function updateTeamProfile(params: {
   let uploadedImagePath: string | null = null
 
   if (imageFile) {
-    const uploadedImage = await uploadTeamImage(teamId, imageFile)
-    uploadedImagePath = uploadedImage.path
-    nextImagePath = uploadedImage.path
-    teamPayload.image_url = uploadedImage.publicUrl
+    try {
+      const uploadedImage = await uploadTeamImage(teamId, imageFile)
+      uploadedImagePath = uploadedImage.path
+      nextImagePath = uploadedImage.path
+      teamPayload.image_url = uploadedImage.publicUrl
+    } catch (error) {
+      throw new Error('Failed to upload the team image: ' + describeError(error, 'Storage policy rejected the upload.'))
+    }
   }
 
   if (removeImage) {
@@ -645,7 +761,7 @@ export async function updateTeamProfile(params: {
     if (uploadedImagePath) {
       await removeTeamImageByPath(uploadedImagePath).catch(() => undefined)
     }
-    throw teamError
+    throw new Error('Failed to update the team profile: ' + describeError(teamError, 'The update was rejected by RLS.'))
   }
 
   if (!updatedTeam) {
@@ -683,5 +799,7 @@ export async function updateTeamProfile(params: {
     skills: normalizedSkillIds.length > 0 ? await fetchTeamSkillTags(teamId) : [],
   }
 }
+
+
 
 

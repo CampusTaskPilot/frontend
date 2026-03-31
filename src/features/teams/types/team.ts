@@ -40,8 +40,15 @@ export interface ProfileSummary {
   profile_image_url: string | null
 }
 
+export interface TeamMemberSkillTag {
+  id: number
+  name: string
+  level: string | null
+}
+
 export interface TeamMemberWithProfile extends TeamMemberRecord {
   profile: ProfileSummary | null
+  skills: TeamMemberSkillTag[]
 }
 
 export interface TeamListItem extends TeamRecord {
@@ -387,16 +394,25 @@ export interface PMReportResponse {
 }
 
 export type ProjectDirectionStatus = 'on_track' | 'warning' | 'risk'
-export type ProjectDirectionPriority = 'low' | 'medium' | 'high'
-export type ProjectDirectionActionType = 'open_pm_direction' | 'open_tasks' | 'open_calendar'
+export type ProjectDirectionSeverity = 'low' | 'medium' | 'high'
+export type ProjectDirectionImportance = 'normal' | 'important' | 'urgent'
 
-export interface ProjectDirectionRecommendation {
-  id: string
+export interface ProjectDirectionProjectSummary {
+  phase: string
+  shortTermGoal: string
+  keyMetrics: string[]
+}
+
+export interface ProjectDirectionDiagnosisItem {
   title: string
   description: string
-  priority?: ProjectDirectionPriority
-  actionLabel?: string
-  actionType?: ProjectDirectionActionType
+  severity: ProjectDirectionSeverity
+}
+
+export interface ProjectDirectionActionItem {
+  importance: ProjectDirectionImportance
+  title: string
+  description: string
 }
 
 export interface ProjectDirectionOverview {
@@ -405,7 +421,10 @@ export interface ProjectDirectionOverview {
   status: ProjectDirectionStatus
   headline: string
   summary: string
-  recommendations: ProjectDirectionRecommendation[]
+  projectSummary: ProjectDirectionProjectSummary
+  diagnosis: ProjectDirectionDiagnosisItem[]
+  actions: ProjectDirectionActionItem[]
+  meetingFocus: string[]
   createdBy?: string | null
   createdAt?: string
   updatedAt?: string

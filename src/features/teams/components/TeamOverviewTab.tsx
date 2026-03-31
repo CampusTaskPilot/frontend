@@ -1,8 +1,10 @@
 import { Card } from '../../../components/ui/Card'
-import { TeamProfileHero } from './TeamProfileHero'
+import { cn } from '../../../lib/cn'
+import { TeamOverviewHeader } from './TeamOverviewHeader'
+import { TeamOverviewMembers } from './TeamOverviewMembers'
+import { TeamOverviewSkills } from './TeamOverviewSkills'
 import type {
   ProfileSummary,
-  TeamMemberRole,
   TeamMemberWithProfile,
   TeamRecord,
   TeamSkillTag,
@@ -23,77 +25,71 @@ interface TeamOverviewTabProps {
   onTeamUpdated: (payload: { team: TeamRecord; skills: TeamSkillTag[] }) => void
 }
 
-function isLeaderRole(role: TeamMemberRole) {
-  return role === 'leader'
-}
-
-function roleLabel(role: TeamMemberRole) {
-  if (isLeaderRole(role)) return 'Leader'
-  if (role === 'member') return 'Member'
-  return role
-}
-
-function displayName(member: TeamMemberWithProfile) {
-  return member.profile?.full_name || member.profile?.email || member.user_id
-}
-
-function createdDateLabel(createdAt: string) {
-  const date = new Date(createdAt)
-  if (Number.isNaN(date.getTime())) return '-'
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(date)
-}
-
-function MemberAvatar({ member }: { member: TeamMemberWithProfile }) {
-  const profileImageUrl = member.profile?.profile_image_url ?? null
-  const initial = displayName(member).trim().charAt(0).toUpperCase() || 'U'
-
-  if (profileImageUrl) {
-    return (
-      <img
-        src={profileImageUrl}
-        alt={displayName(member)}
-        className="h-10 w-10 rounded-full border border-campus-200 object-cover"
-      />
-    )
-  }
-
+function OverviewSkeleton() {
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-campus-200 bg-campus-100 text-sm font-semibold text-campus-700">
-      {initial}
+    <div className="animate-pulse space-y-6">
+      <div className="overflow-hidden rounded-[28px] border border-campus-200/80 bg-white/90 shadow-card">
+        <div className="h-56 bg-campus-100" />
+        <div className="space-y-6 px-6 pb-6 pt-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-4">
+              <div className="h-4 w-28 rounded-full bg-campus-100" />
+              <div className="h-10 w-72 max-w-full rounded-full bg-campus-200" />
+              <div className="h-4 w-[32rem] max-w-full rounded-full bg-campus-100" />
+              <div className="h-4 w-[26rem] max-w-full rounded-full bg-campus-100" />
+            </div>
+            <div className="flex gap-3">
+              <div className="h-11 w-32 rounded-full bg-campus-100" />
+              <div className="h-11 w-32 rounded-full bg-campus-100" />
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-24 rounded-2xl bg-campus-50" />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),320px]">
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-36 rounded-[24px] bg-white/80 shadow-card" />
+            ))}
+          </div>
+          <div className="h-48 rounded-[24px] bg-white/80 shadow-card" />
+          <div className="h-80 rounded-[24px] bg-white/80 shadow-card" />
+        </div>
+        <div className="space-y-6">
+          <div className="h-56 rounded-[24px] bg-white/80 shadow-card" />
+          <div className="h-56 rounded-[24px] bg-white/80 shadow-card" />
+        </div>
+      </div>
     </div>
   )
 }
 
-function OverviewSkeleton() {
+function PulseItem({
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  label: string
+  value: string
+  tone?: 'neutral' | 'brand' | 'accent'
+}) {
   return (
-    <div className="space-y-4 animate-pulse">
-      <Card className="overflow-hidden p-0">
-        <div className="grid lg:grid-cols-[320px,1fr]">
-          <div className="min-h-[280px] bg-campus-200" />
-          <div className="space-y-5 p-6 md:p-8">
-            <div className="h-4 w-28 rounded-full bg-campus-200" />
-            <div className="h-10 w-2/3 rounded-2xl bg-campus-200" />
-            <div className="space-y-2">
-              <div className="h-4 w-full rounded-full bg-campus-100" />
-              <div className="h-4 w-11/12 rounded-full bg-campus-100" />
-              <div className="h-4 w-3/4 rounded-full bg-campus-100" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="rounded-2xl border border-campus-200 bg-white/80 px-4 py-3">
-                  <div className="h-3 w-20 rounded-full bg-campus-100" />
-                  <div className="mt-3 h-6 w-24 rounded-full bg-campus-200" />
-                  <div className="mt-2 h-3 w-24 rounded-full bg-campus-100" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
+    <div
+      className={cn(
+        'rounded-2xl border px-4 py-4',
+        tone === 'brand' && 'border-brand-100 bg-brand-50/70',
+        tone === 'accent' && 'border-emerald-100 bg-emerald-50/80',
+        tone === 'neutral' && 'border-campus-200 bg-white',
+      )}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-campus-500">{label}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-campus-900">{value}</p>
     </div>
   )
 }
@@ -111,117 +107,120 @@ export function TeamOverviewTab({
   onOpenMembers,
   onTeamUpdated,
 }: TeamOverviewTabProps) {
-  const sortedMembers = [...members].sort((a, b) => {
-    const aLeader = a.user_id === team.leader_id || isLeaderRole(a.role)
-    const bLeader = b.user_id === team.leader_id || isLeaderRole(b.role)
-    if (aLeader && !bLeader) return -1
-    if (!aLeader && bLeader) return 1
-    return 0
-  })
+  if (isLoading) {
+    return <OverviewSkeleton />
+  }
 
-  const summaryCards = [
-    {
-      label: '충원 현황',
-      value: `${members.length}/${team.max_members || '-'}`,
-      description: team.is_recruiting ? '현재 팀원을 모집 중입니다.' : '현재 모집은 마감된 상태입니다.',
-    },
-    {
-      label: '기술 스택',
-      value: `${skills.length}개`,
-      description: skills.length > 0 ? 'Overview 헤더에 연결된 대표 스택입니다.' : '아직 연결된 스택이 없습니다.',
-    },
-    {
-      label: '생성일',
-      value: createdDateLabel(team.created_at),
-      description: '팀 워크스페이스가 만들어진 날짜입니다.',
-    },
-    {
-      label: '작업 준비',
-      value: `${tasks.length}개`,
-      description: tasks.length > 0 ? 'Overview에서 연결된 작업 수입니다.' : '아직 연결된 작업이 없습니다.',
-    },
-  ]
+  if (errorMessage) {
+    return (
+      <Card className="rounded-[28px] border-rose-200 bg-rose-50/90 p-5 shadow-none">
+        <p className="text-sm leading-6 text-rose-700">
+          {errorMessage} Overview 정보를 다시 불러오지 못했습니다. 잠시 후 다시 시도하거나 권한 상태를 확인해 주세요.
+        </p>
+      </Card>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      {isLoading && <OverviewSkeleton />}
+    <div className="space-y-6">
+      <TeamOverviewHeader
+        team={team}
+        leader={leader}
+        members={members}
+        skills={skills}
+        isLeader={isLeader}
+        currentUserId={currentUserId}
+        tasks={tasks}
+        onOpenMembers={onOpenMembers}
+        onTeamUpdated={onTeamUpdated}
+      />
 
-      {!isLoading && errorMessage && (
-        <Card className="border-rose-200 bg-rose-50">
-          <p className="text-sm text-rose-600">
-            {errorMessage} 권한(RLS) 정책이나 연결 상태로 인해 일부 데이터 조회가 제한될 수 있습니다.
-          </p>
-        </Card>
-      )}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),320px]">
+        <div className="space-y-6">
+          <TeamOverviewSkills skills={skills} />
+          <TeamOverviewMembers members={members} team={team} />
+        </div>
 
-      {!isLoading && !errorMessage && (
-        <>
-          <TeamProfileHero
-            team={team}
-            leader={leader}
-            members={members}
-            skills={skills}
-            isLeader={isLeader}
-            currentUserId={currentUserId}
-            onOpenMembers={onOpenMembers}
-            onTeamUpdated={onTeamUpdated}
-          />
+        <aside className="space-y-6 xl:sticky xl:top-4 xl:self-start">
+          <Card className="rounded-[24px] border-campus-200/80 bg-white/90 p-5 shadow-card">
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
+                  Workspace Actions
+                </p>
+                <h2 className="text-xl font-semibold tracking-tight text-campus-900">빠르게 이동하고 관리하기</h2>
+                <p className="text-sm leading-6 text-campus-500">
+                  현재 팀 상태를 확인하면서 자주 쓰는 관리 동작으로 바로 이어질 수 있게 정리했습니다.
+                </p>
+              </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {summaryCards.map((card) => (
-              <Card key={card.label} className="border border-campus-200/80 bg-white/85 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-campus-500">{card.label}</p>
-                <p className="mt-2 text-2xl font-semibold text-campus-900">{card.value}</p>
-                <p className="mt-2 text-xs leading-5 text-campus-500">{card.description}</p>
-              </Card>
-            ))}
-          </div>
-
-          <Card className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-2xl text-campus-900">Team Members</h2>
-                <p className="mt-1 text-sm text-campus-500">리더가 상단에 오도록 정렬해 팀 구성을 빠르게 파악할 수 있습니다.</p>
+              <div className="flex flex-col gap-3">
+                {isLeader && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const editButton = document.querySelector<HTMLButtonElement>(
+                        '[data-team-edit-trigger="true"]',
+                      )
+                      editButton?.click()
+                    }}
+                    className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-brand-500 via-brand-400 to-accent-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:brightness-105"
+                  >
+                    팀 정보 수정
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onOpenMembers}
+                  className="inline-flex w-full items-center justify-center rounded-full border border-campus-200 bg-white px-5 py-3 text-sm font-semibold text-campus-700 transition hover:border-campus-300 hover:bg-campus-50"
+                >
+                  멤버 관리 보기
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  title="현재 팀 삭제 기능은 아직 연결되어 있지 않습니다."
+                  className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-full border border-campus-200 bg-campus-50 px-5 py-3 text-sm font-semibold text-campus-500"
+                >
+                  팀 삭제 준비 중
+                </button>
               </div>
             </div>
-
-            {sortedMembers.length === 0 ? (
-              <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-4 text-sm text-campus-500">
-                아직 팀 멤버가 없습니다.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {sortedMembers.map((member) => {
-                  const leaderMember = member.user_id === team.leader_id || isLeaderRole(member.role)
-                  return (
-                    <div
-                      key={`${member.team_id}-${member.user_id}`}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-3 transition hover:border-brand-200 hover:bg-white"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <MemberAvatar member={member} />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-campus-900">{displayName(member)}</p>
-                          <p className="truncate text-xs text-campus-500">{member.profile?.email ?? member.user_id}</p>
-                          <p className="truncate text-xs text-campus-500">상태: {member.status || '-'}</p>
-                        </div>
-                      </div>
-                      <span
-                        className={[
-                          'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold',
-                          leaderMember ? 'bg-emerald-50 text-emerald-700' : 'bg-campus-100 text-campus-700',
-                        ].join(' ')}
-                      >
-                        {roleLabel(member.role)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
           </Card>
-        </>
-      )}
+
+          <Card className="rounded-[24px] border-campus-200/80 bg-white/90 p-5 shadow-card">
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
+                  Workspace Pulse
+                </p>
+                <h2 className="text-xl font-semibold tracking-tight text-campus-900">운영 현황</h2>
+              </div>
+
+              <div className="space-y-3">
+                <PulseItem
+                  label="Recruiting"
+                  value={
+                    team.is_recruiting
+                      ? '새 팀원을 받을 수 있는 상태입니다.'
+                      : '현재는 신규 모집을 닫아둔 상태입니다.'
+                  }
+                  tone={team.is_recruiting ? 'accent' : 'neutral'}
+                />
+                <PulseItem
+                  label="Members"
+                  value={`${members.length}/${team.max_members || '-'}명 참여 중`}
+                  tone="brand"
+                />
+                <PulseItem
+                  label="Skills"
+                  value={skills.length > 0 ? `${skills.length}개의 연결 기술이 등록되어 있습니다.` : '아직 연결된 기술이 없습니다.'}
+                />
+              </div>
+            </div>
+          </Card>
+        </aside>
+      </div>
     </div>
   )
 }

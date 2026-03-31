@@ -1,43 +1,19 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { SkillSelector } from '../../../components/common/SkillSelector'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { InputField } from '../../../components/ui/InputField'
 import { cn } from '../../../lib/cn'
+import { TEAM_IMAGE_STORAGE_ENABLED, validateTeamImageFile } from '../lib/teamProfileImages'
 import { fetchSkillOptions, updateTeamProfile } from '../lib/teams'
-import { TEAM_IMAGE_STORAGE_ENABLED } from '../lib/teamProfileImages'
 import type {
   ProfileSummary,
   SkillOption,
-  TeamMemberRole,
   TeamMemberWithProfile,
   TeamRecord,
   TeamSkillTag,
 } from '../types/team'
-
-const MAX_TEAM_IMAGE_SIZE = 5 * 1024 * 1024
-
-const summaryClampStyle: CSSProperties = {
-  display: '-webkit-box',
-  WebkitBoxOrient: 'vertical',
-  WebkitLineClamp: 3,
-  overflow: 'hidden',
-}
-
-const descriptionClampStyle: CSSProperties = {
-  display: '-webkit-box',
-  WebkitBoxOrient: 'vertical',
-  WebkitLineClamp: 5,
-  overflow: 'hidden',
-}
-
-const previewDescriptionClampStyle: CSSProperties = {
-  display: '-webkit-box',
-  WebkitBoxOrient: 'vertical',
-  WebkitLineClamp: 2,
-  overflow: 'hidden',
-}
 
 interface TeamProfileHeroProps {
   team: TeamRecord
@@ -61,18 +37,6 @@ interface TeamProfileDraft {
   removeImage: boolean
 }
 
-function isLeaderRole(role: TeamMemberRole) {
-  return role === 'leader'
-}
-
-function displayName(member: TeamMemberWithProfile) {
-  return member.profile?.full_name || member.profile?.email || member.user_id
-}
-
-function resolveLeaderName(profile: ProfileSummary | null, members: TeamMemberWithProfile[]) {
-  return profile?.full_name || profile?.email || members[0]?.profile?.full_name || members[0]?.profile?.email || '팀 리더'
-}
-
 function createInitialDraft(team: TeamRecord, skills: TeamSkillTag[]): TeamProfileDraft {
   return {
     name: team.name,
@@ -86,213 +50,95 @@ function createInitialDraft(team: TeamRecord, skills: TeamSkillTag[]): TeamProfi
   }
 }
 
-function createdDateLabel(createdAt: string) {
+function formatCreatedAt(createdAt: string) {
   const date = new Date(createdAt)
-  if (Number.isNaN(date.getTime())) return '날짜 미확인'
+  if (Number.isNaN(date.getTime())) return '날짜 미정'
   return new Intl.DateTimeFormat('ko-KR', {
     year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).format(date)
 }
 
-function teamInitial(teamName: string) {
-  return teamName.trim().charAt(0).toUpperCase() || 'T'
+function getLeaderName(leader: ProfileSummary | null, members: TeamMemberWithProfile[]) {
+  return (
+    leader?.full_name ||
+    leader?.email ||
+    members[0]?.profile?.full_name ||
+    members[0]?.profile?.email ||
+    '리더 미정'
+  )
 }
 
-function imageAlt(teamName: string) {
-  return `${teamName} team cover`
+function getDisplayName(member: TeamMemberWithProfile) {
+  return member.profile?.full_name || member.profile?.email || member.user_id
 }
 
-function recruitingLabel(isRecruiting: boolean) {
-  return isRecruiting ? '모집 중' : '모집 마감'
+function normalizeSummary(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : '팀이 어떤 방향으로 협업하는지 한 줄로 소개해보세요.'
 }
 
-function sanitizedDescription(value: string | null | undefined) {
-  const normalized = value?.trim()
-  return normalized && normalized.length > 0
-    ? normalized
-    : '아직 상세 설명이 없습니다. 팀의 목표, 협업 방식, 기대하는 결과물을 소개해 보세요.'
-}
-
-function sanitizedSummary(value: string | null | undefined) {
-  const normalized = value?.trim()
-  return normalized && normalized.length > 0
-    ? normalized
-    : '팀의 방향성과 협업 스타일을 소개해 보세요.'
-}
-
-function metricValue(value: string) {
-  return value.length > 0 ? value : '-'
+function normalizeDescription(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : '팀의 목표와 작업 방식, 진행 중인 맥락을 설명해보세요.'
 }
 
 function normalizeImageSrc(value: string | null | undefined) {
-  if (typeof value !== 'string') return null
+  if (!value) return null
   const trimmed = value.trim()
-  if (!trimmed) return null
-  if (trimmed === 'null' || trimmed === 'undefined') return null
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null
   return trimmed
-}
-
-function TeamCoverImageFallback({
-  teamName,
-  category,
-  summary,
-}: {
-  teamName: string
-  category: string | null
-  summary: string | null
-}) {
-  return (
-    <div className="absolute inset-0 bg-[linear-gradient(145deg,#eef4ff_0%,#dfeeff_48%,#f7fbff_100%)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(88,112,255,0.22),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(18,198,170,0.18),transparent_30%)]" />
-      <div className="absolute left-4 top-4 h-24 w-24 rounded-full bg-brand-200/35 blur-2xl" />
-      <div className="absolute bottom-4 right-4 h-24 w-24 rounded-full bg-accent-200/30 blur-2xl" />
-
-      <div className="relative flex h-full flex-col items-center justify-center px-6 py-8 text-center">
-        <div className="inline-flex h-20 w-20 items-center justify-center rounded-[1.8rem] border border-brand-200 bg-white/90 text-3xl font-semibold text-brand-700 shadow-[0_10px_30px_rgba(53,93,255,0.16)]">
-          {teamInitial(teamName)}
-        </div>
-
-        <div className="mt-5 max-w-[15rem] space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-600">
-            Team Image Placeholder
-          </p>
-          <p className="break-words font-display text-xl font-semibold leading-tight text-campus-900">
-            {teamName}
-          </p>
-          <p className="text-sm leading-6 text-campus-600" style={summaryClampStyle}>
-            {summary?.trim() || '팀 이미지를 등록하면 이 영역에 대표 이미지가 표시됩니다.'}
-          </p>
-          {category && (
-            <div className="pt-1">
-              <span className="inline-flex rounded-full border border-brand-100 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-700">
-                {category}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function TeamCoverImageContent({
-  src,
-  teamName,
-  category,
-  summary,
-  imageClassName,
-}: {
-  src?: string
-  teamName: string
-  category: string | null
-  summary: string | null
-  imageClassName?: string
-}) {
-  const [loaded, setLoaded] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const showImage = Boolean(src) && !failed
-
-  if (!showImage) {
-    return <TeamCoverImageFallback teamName={teamName} category={category} summary={summary} />
-  }
-
-  return (
-    <>
-      {!loaded && <div className="absolute inset-0 animate-pulse bg-campus-200/70" aria-hidden="true" />}
-      <img
-        src={src}
-        alt={imageAlt(teamName)}
-        className={cn(
-          'absolute inset-0 h-full w-full object-cover object-center transition duration-500',
-          loaded ? 'opacity-100' : 'opacity-0',
-          imageClassName,
-        )}
-        onLoad={() => {
-          if (import.meta.env.DEV) {
-            console.debug('[TeamCoverImage] load success', { src })
-          }
-          setLoaded(true)
-        }}
-        onError={() => {
-          if (import.meta.env.DEV) {
-            console.error('[TeamCoverImage] load failed', { src })
-          }
-          setFailed(true)
-          setLoaded(true)
-        }}
-      />
-    </>
-  )
 }
 
 function TeamCoverImage({
   src,
   teamName,
-  category,
   summary,
   className = '',
-  imageClassName = '',
 }: {
   src: string | null | undefined
   teamName: string
-  category: string | null
-  summary: string | null
+  summary: string
   className?: string
-  imageClassName?: string
 }) {
   const normalizedSrc = normalizeImageSrc(src)
 
-  return (
-    <div className={cn('relative h-full w-full overflow-hidden', className)}>
-      <TeamCoverImageContent
-        key={normalizedSrc ?? '__fallback__'}
-        src={normalizedSrc ?? undefined}
-        teamName={teamName}
-        category={category}
-        summary={summary}
-        imageClassName={imageClassName}
-      />
-    </div>
-  )
+  if (!normalizedSrc) {
+    return (
+      <div
+        className={cn(
+          'flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#eef4ff_0%,#dfeeff_48%,#f7fbff_100%)] p-6 text-center',
+          className,
+        )}
+      >
+        <div>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-brand-200 bg-white text-2xl font-semibold text-brand-700">
+            {teamName.trim().charAt(0).toUpperCase() || 'T'}
+          </div>
+          <p className="mt-4 text-lg font-semibold text-campus-900">{teamName}</p>
+          <p className="mt-2 text-sm text-campus-600">{summary}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return <img src={normalizedSrc} alt={`${teamName} team cover`} className={cn('h-full w-full object-cover', className)} />
 }
 
-function MiniAvatar({ member, className = '' }: { member: TeamMemberWithProfile; className?: string }) {
+function MiniAvatar({ member }: { member: TeamMemberWithProfile }) {
   const profileImageUrl = member.profile?.profile_image_url ?? null
-  const initial = displayName(member).trim().charAt(0).toUpperCase() || 'T'
+  const initial = getDisplayName(member).trim().charAt(0).toUpperCase() || 'T'
 
   return profileImageUrl ? (
     <img
       src={profileImageUrl}
-      alt={displayName(member)}
-      className={`h-10 w-10 rounded-full border border-white/70 object-cover shadow-sm ${className}`}
+      alt={getDisplayName(member)}
+      className="h-10 w-10 rounded-full border border-white/80 object-cover shadow-sm"
     />
   ) : (
-    <div
-      className={`flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-sm font-semibold text-campus-700 shadow-sm ${className}`}
-    >
+    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white text-sm font-semibold text-campus-700 shadow-sm">
       {initial}
-    </div>
-  )
-}
-
-function MetaBlock({
-  label,
-  value,
-  hint,
-}: {
-  label: string
-  value: string
-  hint: string
-}) {
-  return (
-    <div className="flex min-h-[120px] flex-col justify-between rounded-[1.35rem] border border-campus-200/80 bg-white/84 px-4 py-4">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">{label}</p>
-        <p className="mt-2 break-words text-lg font-semibold leading-snug text-campus-900">{value}</p>
-      </div>
-      <p className="mt-3 text-xs leading-5 text-campus-500">{hint}</p>
     </div>
   )
 }
@@ -318,20 +164,26 @@ export function TeamProfileHero({
   const [successMessage, setSuccessMessage] = useState('')
 
   const sortedMembers = useMemo(() => {
-    return [...members].sort(
-      (a, b) =>
-        Number(b.user_id === team.leader_id || isLeaderRole(b.role)) -
-        Number(a.user_id === team.leader_id || isLeaderRole(a.role)),
-    )
+    return [...members].sort((a, b) => {
+      const aLeader = Number(a.user_id === team.leader_id || a.role === 'leader')
+      const bLeader = Number(b.user_id === team.leader_id || b.role === 'leader')
+      return bLeader - aLeader
+    })
   }, [members, team.leader_id])
 
   const visibleMembers = sortedMembers.slice(0, 4)
-  const currentLeaderName = resolveLeaderName(leader, sortedMembers)
+  const currentLeaderName = getLeaderName(leader, sortedMembers)
   const occupancyRatio =
     team.max_members > 0 ? Math.min(100, Math.round((members.length / team.max_members) * 100)) : 0
   const displayImageUrl = selectedImageFile ? imagePreviewUrl : draft.removeImage ? '' : team.image_url ?? ''
-  const currentSummary = sanitizedSummary(team.summary)
-  const currentDescription = sanitizedDescription(team.description)
+  const summaryText = normalizeSummary(team.summary)
+  const descriptionText = normalizeDescription(team.description)
+  const metaItems = [
+    { label: 'Members', value: `${members.length}/${team.max_members || '-'}` },
+    { label: 'Leader', value: currentLeaderName },
+    { label: 'Category', value: team.category?.trim() || '-' },
+    { label: 'Created', value: formatCreatedAt(team.created_at) },
+  ]
 
   useEffect(() => {
     if (!isEditing) {
@@ -341,22 +193,18 @@ export function TeamProfileHero({
     }
   }, [isEditing, skills, team])
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (imagePreviewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreviewUrl)
       }
-    },
-    [imagePreviewUrl],
-  )
+    }
+  }, [imagePreviewUrl])
 
   async function ensureSkillOptions() {
-    if (skillOptions.length > 0 || isLoadingSkillOptions) {
-      return
-    }
+    if (skillOptions.length > 0 || isLoadingSkillOptions) return
 
     setIsLoadingSkillOptions(true)
-
     try {
       setSkillOptions(await fetchSkillOptions())
     } catch (error) {
@@ -379,18 +227,12 @@ export function TeamProfileHero({
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
+    if (!file) return
 
-    if (!file) {
-      return
-    }
-
-    if (!file.type.startsWith('image/')) {
-      setErrorMessage('이미지 파일만 업로드할 수 있습니다.')
-      return
-    }
-
-    if (file.size > MAX_TEAM_IMAGE_SIZE) {
-      setErrorMessage('팀 이미지는 5MB 이하 파일만 업로드할 수 있습니다.')
+    const validationMessage = validateTeamImageFile(file)
+    if (validationMessage) {
+      setErrorMessage(validationMessage)
+      event.target.value = ''
       return
     }
 
@@ -405,12 +247,12 @@ export function TeamProfileHero({
   }
 
   function validateDraft() {
-    if (!draft.name.trim()) return '팀 이름을 입력해 주세요.'
-    if (draft.summary.trim().length < 4) return '한 줄 소개는 최소 4자 이상 입력해 주세요.'
+    if (!draft.name.trim()) return '팀 이름을 입력해주세요.'
+    if (draft.summary.trim().length < 4) return '팀 소개는 최소 4자 이상 입력해주세요.'
 
     const parsedMaxMembers = Number.parseInt(draft.maxMembers, 10)
     if (!Number.isInteger(parsedMaxMembers) || parsedMaxMembers < Math.max(members.length, 2)) {
-      return `최대 인원은 현재 인원(${members.length}명) 이상으로 설정해 주세요.`
+      return `최대 인원은 최소 ${Math.max(members.length, 2)}명 이상이어야 합니다.`
     }
 
     return ''
@@ -418,7 +260,7 @@ export function TeamProfileHero({
 
   async function handleSave() {
     if (!currentUserId) {
-      setErrorMessage('로그인 정보가 없어 저장할 수 없습니다.')
+      setErrorMessage('로그인 후 저장할 수 있습니다.')
       return
     }
 
@@ -454,11 +296,11 @@ export function TeamProfileHero({
       setImagePreviewUrl(result.team.image_url ?? '')
       setSuccessMessage(
         selectedImageFile || draft.removeImage
-          ? '팀 프로필과 대표 이미지가 저장되었습니다.'
-          : '팀 프로필이 저장되었습니다.',
+          ? '팀 정보와 대표 이미지가 저장되었습니다.'
+          : '팀 정보가 저장되었습니다.',
       )
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '팀 프로필 저장에 실패했습니다.')
+      setErrorMessage(error instanceof Error ? error.message : '팀 정보를 저장하지 못했습니다.')
     } finally {
       setIsSaving(false)
     }
@@ -466,102 +308,102 @@ export function TeamProfileHero({
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden border border-brand-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_24px_72px_rgba(53,93,255,0.11)]">
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.2fr),360px]">
-          <div className="min-w-0 border-b border-campus-200/70 p-5 sm:p-6 xl:border-b-0 xl:border-r xl:p-8">
-            <div className="flex min-w-0 flex-col gap-5">
+      <Card className="overflow-hidden border border-campus-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-sm">
+        <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr),320px]">
+          <div className="min-w-0 border-b border-campus-200 p-5 sm:p-6 xl:border-b-0 xl:border-r xl:p-7">
+            <div className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-brand-600">Team Overview</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-brand-600">Team Overview</p>
                 <span className="rounded-full border border-campus-200 bg-white px-3 py-1 text-xs font-semibold text-campus-700">
-                  {isLeader ? 'Leader Access' : 'View Only'}
+                  {isLeader ? 'Leader Access' : 'Member View'}
                 </span>
               </div>
 
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start gap-2.5">
-                  <h2 className="min-w-0 flex-1 break-words font-display text-[2rem] font-semibold leading-[1.05] text-campus-900 sm:text-[2.4rem]">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start gap-3">
+                  <h2 className="min-w-0 flex-1 break-words font-display text-3xl font-semibold leading-tight text-campus-900 sm:text-[2.5rem]">
                     {team.name}
                   </h2>
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Badge variant={team.is_recruiting ? 'success' : 'neutral'}>
-                      {recruitingLabel(team.is_recruiting)}
+                      {team.is_recruiting ? '모집중' : '모집 마감'}
                     </Badge>
-                    <Badge variant={isLeader ? 'warning' : 'neutral'}>{isLeader ? '팀 리더' : '읽기 전용'}</Badge>
+                    <Badge variant={isLeader ? 'warning' : 'neutral'}>{isLeader ? '리더' : '멤버'}</Badge>
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">Description</p>
-                <div className="rounded-[1.35rem] border border-campus-200/80 bg-white/84 px-4 py-4">
-                  <p className="text-sm leading-7 text-campus-700" style={summaryClampStyle}>
-                    {currentSummary}
+                <div className="space-y-2">
+                  <p className="max-w-3xl text-sm font-medium leading-6 text-campus-800">{summaryText}</p>
+                  <p className="max-w-3xl line-clamp-2 text-sm leading-6 text-campus-600 sm:line-clamp-3">
+                    {descriptionText}
                   </p>
-                  <p className="mt-3 border-t border-campus-100 pt-3 text-sm leading-7 text-campus-600" style={descriptionClampStyle}>
-                    {currentDescription}
-                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5">
+                  {isLeader && (
+                    <Button type="button" className="min-w-[140px]" onClick={openEditor}>
+                      팀 정보 수정
+                    </Button>
+                  )}
+                  <Button type="button" variant="ghost" className="min-w-[140px]" onClick={onOpenMembers}>
+                    멤버 관리
+                  </Button>
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-campus-200 bg-white/90 px-4 py-3 text-sm text-campus-600">
+                {metaItems.map((item) => (
+                  <div key={item.label} className="flex items-center gap-2">
+                    <span className="text-campus-400">•</span>
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-400">{item.label}</span>
+                    <span className="font-medium text-campus-800">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+
               <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">Skills</p>
-                <div className="flex flex-wrap gap-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">Connected Skills</p>
+                <div className="flex flex-wrap gap-2">
                   {skills.length > 0 ? (
                     skills.map((skill) => (
                       <span
                         key={skill.id}
-                        className="inline-flex max-w-full items-center rounded-full border border-brand-100 bg-brand-50 px-3.5 py-2 text-xs font-semibold text-brand-700"
+                        className="inline-flex max-w-full items-center rounded-full border border-brand-100 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700"
                       >
                         <span className="truncate">{skill.name}</span>
                       </span>
                     ))
                   ) : (
-                    <span className="inline-flex items-center rounded-full border border-campus-200 bg-campus-50 px-3.5 py-2 text-xs font-medium text-campus-600">
-                      기술 스택 미설정
+                    <span className="inline-flex items-center rounded-full border border-campus-200 bg-campus-50 px-3 py-1.5 text-xs font-medium text-campus-600">
+                      연결된 기술 스택이 없습니다
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                <MetaBlock
-                  label="Members"
-                  value={`${members.length}/${team.max_members || '-'}`}
-                  hint="현재 참여 인원 / 최대 인원"
-                />
-                <MetaBlock label="Leader" value={metricValue(currentLeaderName)} hint="팀을 관리하는 리더" />
-                <MetaBlock label="Category" value={metricValue(team.category || '미분류')} hint="팀이 집중하는 분야" />
-                <MetaBlock label="Created" value={createdDateLabel(team.created_at)} hint="워크스페이스 시작일" />
-              </div>
-
-              <div className="rounded-[1.55rem] border border-campus-200/80 bg-white/80 p-5">
+              <div className="rounded-2xl border border-campus-200 bg-white/90 p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-campus-900">리더 & 멤버</p>
+                    <p className="text-sm font-semibold text-campus-900">팀 상태</p>
                     <p className="mt-1 text-xs leading-5 text-campus-500">
-                      리더 정보와 참여 상태를 한 블록에서 확인할 수 있습니다.
+                      현재 인원 점유율과 리더 기준 멤버 구성을 빠르게 확인할 수 있습니다.
                     </p>
                   </div>
-                  <span className="shrink-0 text-xs font-medium text-campus-500">충원률 {occupancyRatio}%</span>
+                  <span className="shrink-0 rounded-full bg-campus-100 px-2.5 py-1 text-xs font-semibold text-campus-700">
+                    {occupancyRatio}%
+                  </span>
                 </div>
 
                 <div className="mt-4 flex items-center">
-                  <div className="flex shrink-0">
-                    {visibleMembers.map((member, index) => (
-                      <MiniAvatar
-                        key={`${member.team_id}-${member.user_id}`}
-                        member={member}
-                        className={index > 0 ? '-ml-3' : ''}
-                      />
+                  <div className="flex shrink-0 gap-2">
+                    {visibleMembers.map((member) => (
+                      <MiniAvatar key={`${member.team_id}-${member.user_id}`} member={member} />
                     ))}
                   </div>
-
                   <div className="ml-4 min-w-0">
                     <p className="truncate text-sm font-semibold text-campus-900">{currentLeaderName}</p>
                     <p className="text-xs leading-5 text-campus-500">
-                      {team.is_recruiting
-                        ? '새로운 팀원을 받을 준비가 되어 있습니다.'
-                        : '현재는 팀 구성이 안정적으로 유지되고 있습니다.'}
+                      {team.is_recruiting ? '새로운 팀원을 모집 중입니다.' : '현재 모집은 마감된 상태입니다.'}
                     </p>
                   </div>
                 </div>
@@ -582,45 +424,51 @@ export function TeamProfileHero({
             </div>
           </div>
 
-          <aside className="shrink-0 p-5 sm:p-6 xl:p-8">
-            <div className="flex h-full flex-col gap-4 rounded-[1.8rem] border border-brand-100/70 bg-[linear-gradient(180deg,rgba(247,250,255,0.96)_0%,rgba(240,246,255,0.98)_100%)] p-3 shadow-[0_20px_48px_rgba(53,93,255,0.10)]">
-              <div className="overflow-hidden rounded-[1.55rem] border border-brand-200/70 bg-campus-100 shadow-[0_18px_40px_rgba(15,23,42,0.10)] ring-1 ring-white/80">
-                <div className="flex items-center justify-between border-b border-brand-100/70 bg-white px-4 py-3.5">
+          <aside className="p-5 sm:p-6 xl:p-6">
+            <div className="flex h-full flex-col gap-4">
+              <div className="overflow-hidden rounded-[1.6rem] border border-campus-200 bg-campus-100 shadow-sm">
+                <div className="flex items-center justify-between border-b border-campus-200 bg-white px-4 py-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-600">Team Image</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-600">Team Image</p>
                     <p className="mt-1 text-sm font-semibold text-campus-900">
-                      {team.image_url ? '대표 이미지' : '기본 커버 표시 중'}
+                      {team.image_url ? '커스텀 커버' : '기본 커버'}
                     </p>
                   </div>
-                  <span className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-700">
-                    {team.image_url ? 'Image On' : 'Fallback'}
+                  <span className="rounded-full border border-campus-200 bg-campus-50 px-3 py-1 text-[11px] font-semibold text-campus-700">
+                    {team.image_url ? 'Active' : 'Fallback'}
                   </span>
                 </div>
-                <div className="relative aspect-[5/4] min-h-[260px] w-full">
-                  <TeamCoverImage
-                    key={team.image_url ?? 'hero-preview'}
-                    src={team.image_url}
-                    teamName={team.name}
-                    category={team.category}
-                    summary={team.summary}
-                    className="absolute inset-0"
-                    imageClassName="h-full w-full"
-                  />
+                <div className="relative aspect-[5/4] min-h-[240px] w-full">
+                  <TeamCoverImage src={team.image_url} teamName={team.name} summary={summaryText} className="absolute inset-0" />
                 </div>
               </div>
 
-              <div className="rounded-[1.35rem] border border-campus-200/80 bg-white/92 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                <p className="text-sm font-semibold text-campus-900">Actions</p>
-                <p className="mt-1 text-xs leading-5 text-campus-500">이미지 카드 아래에서 바로 팀 관리 액션을 사용할 수 있습니다.</p>
-                <div className="mt-4 flex flex-col gap-2">
+              <div className="rounded-[1.6rem] border border-campus-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-campus-900">Quick Actions</p>
+                    <p className="mt-1 text-xs leading-5 text-campus-500">자주 쓰는 운영 액션을 한 곳에서 바로 실행합니다.</p>
+                  </div>
+                  <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700">Control</span>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-2.5">
                   {isLeader && (
-                    <Button type="button" onClick={openEditor}>
-                      프로필 편집
+                    <Button type="button" className="w-full justify-center" onClick={openEditor}>
+                      팀 정보 수정
                     </Button>
                   )}
-                  <Button type="button" variant="ghost" onClick={onOpenMembers}>
-                    팀원 보기
+                  <Button type="button" variant="ghost" className="w-full justify-center" onClick={onOpenMembers}>
+                    멤버 관리
                   </Button>
+                  <button
+                    type="button"
+                    disabled
+                    title="현재 Overview에는 팀 삭제 동작이 연결되어 있지 않습니다."
+                    className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-medium text-rose-500 opacity-80"
+                  >
+                    팀 삭제
+                  </button>
                 </div>
               </div>
             </div>
@@ -635,9 +483,9 @@ export function TeamProfileHero({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.26em] text-brand-600">Edit Team</p>
-                  <h3 className="mt-2 font-display text-2xl text-campus-900">팀 프로필 편집</h3>
+                  <h3 className="mt-2 font-display text-2xl text-campus-900">팀 프로필 수정</h3>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-campus-600">
-                    대표 이미지, 소개, 상세 설명, 모집 상태와 기술 스택까지 한 번에 수정할 수 있습니다.
+                    팀 이미지, 소개, 분류, 모집 상태와 기술 스택을 한 번에 조정할 수 있습니다.
                   </p>
                 </div>
                 <Button type="button" variant="ghost" size="sm" onClick={() => !isSaving && setIsEditing(false)}>
@@ -652,25 +500,22 @@ export function TeamProfileHero({
                   <div className="overflow-hidden rounded-[1.75rem] border border-campus-200 bg-campus-100">
                     <div className="relative aspect-[5/4] min-h-[260px] w-full">
                       <TeamCoverImage
-                        key={displayImageUrl || `editor-${draft.name || team.name}`}
                         src={displayImageUrl}
                         teamName={draft.name || team.name}
-                        category={draft.category || team.category}
-                        summary={draft.summary || team.summary}
+                        summary={normalizeSummary(draft.summary || team.summary)}
                         className="absolute inset-0"
-                        imageClassName="h-full w-full"
                       />
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-campus-200 bg-white px-4 py-4 text-xs leading-5 text-campus-500">
                     {selectedImageFile
-                      ? `새 이미지가 선택되었습니다: ${selectedImageFile.name}`
+                      ? `선택한 이미지: ${selectedImageFile.name}`
                       : draft.removeImage
-                        ? '이미지를 제거하면 서비스 기본 커버로 자동 대체됩니다.'
+                        ? '현재 이미지를 제거하도록 설정했습니다.'
                         : team.image_url
-                          ? '현재 업로드된 대표 이미지를 유지 중입니다.'
-                          : '업로드된 이미지가 없어 기본 커버를 사용 중입니다.'}
+                          ? '현재 대표 이미지를 유지합니다.'
+                          : '아직 업로드된 대표 이미지가 없습니다.'}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -706,8 +551,8 @@ export function TeamProfileHero({
 
                   <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-4 text-sm text-brand-700">
                     {TEAM_IMAGE_STORAGE_ENABLED
-                      ? '이미지가 없거나 로드에 실패하면 자동으로 기본 커버가 표시됩니다.'
-                      : '현재는 기본 커버만 사용 중입니다.'}
+                      ? '이미지는 Supabase Storage에 업로드되며 저장 후 팀 프로필에 바로 반영됩니다.'
+                      : '현재 이미지 업로드가 비활성화되어 있습니다.'}
                   </div>
                 </div>
               </div>
@@ -731,7 +576,7 @@ export function TeamProfileHero({
                     label="카테고리"
                     value={draft.category}
                     onChange={(event) => updateDraft('category', event.target.value)}
-                    placeholder="예: AI 협업 툴"
+                    placeholder="예: 웹 협업"
                     disabled={isSaving}
                   />
                   <InputField
@@ -740,7 +585,6 @@ export function TeamProfileHero({
                     min={Math.max(members.length, 2)}
                     value={draft.maxMembers}
                     onChange={(event) => updateDraft('maxMembers', event.target.value)}
-                    endAdornment="명"
                     disabled={isSaving}
                   />
                   <label className="space-y-2 text-sm font-medium text-campus-700">
@@ -753,17 +597,16 @@ export function TeamProfileHero({
                         className="h-4 w-4 rounded border-campus-300 text-brand-500 focus:ring-brand-300"
                         disabled={isSaving}
                       />
-                      {draft.isRecruiting ? '현재 팀원 모집을 받고 있습니다.' : '현재는 모집을 닫아 둔 상태입니다.'}
+                      {draft.isRecruiting ? '현재 새로운 팀원을 모집 중입니다.' : '현재 새로운 팀원을 모집하지 않습니다.'}
                     </span>
                   </label>
                 </div>
 
                 <InputField
-                  label="한 줄 소개"
+                  label="팀 소개"
                   value={draft.summary}
                   onChange={(event) => updateDraft('summary', event.target.value)}
-                  placeholder="팀의 방향성과 강점을 짧고 선명하게 소개해 주세요."
-                  hint="Overview 헤더에서 가장 먼저 보이는 문구입니다."
+                  placeholder="한 줄로 팀을 소개해주세요."
                   disabled={isSaving}
                 />
 
@@ -773,48 +616,21 @@ export function TeamProfileHero({
                     value={draft.description}
                     onChange={(event) => updateDraft('description', event.target.value)}
                     rows={7}
-                    placeholder="팀 목표, 협업 방식, 진행 중인 프로젝트와 기대하는 결과물을 자유롭게 적어 주세요."
+                    placeholder="팀의 목표, 작업 방식, 진행 중인 내용을 소개해주세요."
                     className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
+                    disabled={isSaving}
                   />
                 </label>
-
-                <div className="rounded-[1.55rem] border border-campus-200 bg-campus-50/60 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-campus-900">미리보기</p>
-                      <p className="mt-1 text-xs leading-5 text-campus-500">
-                        긴 텍스트도 Overview 카드에서 안정적으로 보이도록 줄 수를 제한합니다.
-                      </p>
-                    </div>
-                    <Badge variant={draft.isRecruiting ? 'success' : 'neutral'}>
-                      {recruitingLabel(draft.isRecruiting)}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-4 rounded-[1.35rem] border border-campus-200 bg-white px-4 py-4">
-                    <p className="break-words font-display text-xl leading-tight text-campus-900">
-                      {draft.name || '팀 이름'}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-campus-700" style={summaryClampStyle}>
-                      {sanitizedSummary(draft.summary)}
-                    </p>
-                    <p className="mt-3 text-xs leading-5 text-campus-500" style={previewDescriptionClampStyle}>
-                      {sanitizedDescription(draft.description)}
-                    </p>
-                  </div>
-                </div>
 
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm font-medium text-campus-700">기술 스택</p>
-                    <p className="mt-1 text-xs text-campus-500">
-                      헤더와 메타 영역에서 팀 정체성을 보여줄 기술을 선택해 주세요.
-                    </p>
+                    <p className="mt-1 text-xs text-campus-500">팀에서 사용하는 기술을 연결해두면 팀 개요와 상세 편집에 함께 반영됩니다.</p>
                   </div>
 
                   {isLoadingSkillOptions ? (
                     <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-5 text-sm text-campus-600">
-                      기술 스택 목록을 불러오는 중입니다...
+                      기술 목록을 불러오는 중입니다...
                     </div>
                   ) : (
                     <SkillSelector
@@ -832,22 +648,17 @@ export function TeamProfileHero({
                         )
                       }
                       showSelectedList
-                      emptySelectedMessage="대표 기술 스택을 선택해 주세요."
+                      emptySelectedMessage="선택된 기술 스택이 없습니다."
                     />
                   )}
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2 border-t border-campus-200 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => !isSaving && setIsEditing(false)}
-                    disabled={isSaving}
-                  >
+                  <Button type="button" variant="ghost" onClick={() => !isSaving && setIsEditing(false)} disabled={isSaving}>
                     취소
                   </Button>
                   <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
-                    {isSaving ? (selectedImageFile ? '업로드 및 저장 중...' : '저장 중...') : '저장하기'}
+                    {isSaving ? '저장 중...' : '저장'}
                   </Button>
                 </div>
               </div>

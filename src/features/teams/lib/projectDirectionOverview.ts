@@ -13,14 +13,22 @@ interface ProjectDirectionApiResponse {
   status: ProjectDirectionOverview['status']
   headline: string
   summary: string
-  recommendations: Array<{
-    id: string
+  project_summary?: {
+    phase?: string
+    short_term_goal?: string
+    key_metrics?: string[]
+  }
+  diagnosis?: Array<{
     title: string
     description: string
-    priority?: 'low' | 'medium' | 'high' | null
-    action_label?: string | null
-    action_type?: 'open_pm_direction' | 'open_tasks' | 'open_calendar' | null
+    severity: 'low' | 'medium' | 'high'
   }>
+  actions?: Array<{
+    importance: 'normal' | 'important' | 'urgent'
+    title: string
+    description: string
+  }>
+  meeting_focus?: string[]
   created_by?: string | null
   created_at: string
   updated_at: string
@@ -57,14 +65,22 @@ function toProjectDirectionOverview(payload: ProjectDirectionApiResponse): Proje
     status: payload.status,
     headline: payload.headline,
     summary: payload.summary,
-    recommendations: payload.recommendations.map((item) => ({
-      id: item.id,
+    projectSummary: {
+      phase: payload.project_summary?.phase ?? '방향 분석 필요',
+      shortTermGoal: payload.project_summary?.short_term_goal ?? '현재 데이터 기준으로 다음 단계 목표를 다시 정리하세요.',
+      keyMetrics: payload.project_summary?.key_metrics ?? [],
+    },
+    diagnosis: (payload.diagnosis ?? []).map((item) => ({
       title: item.title,
       description: item.description,
-      priority: item.priority ?? undefined,
-      actionLabel: item.action_label ?? undefined,
-      actionType: item.action_type ?? undefined,
+      severity: item.severity,
     })),
+    actions: (payload.actions ?? []).map((item) => ({
+      importance: item.importance,
+      title: item.title,
+      description: item.description,
+    })),
+    meetingFocus: payload.meeting_focus ?? [],
     createdBy: payload.created_by ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
