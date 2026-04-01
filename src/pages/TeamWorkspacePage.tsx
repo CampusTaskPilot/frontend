@@ -10,6 +10,7 @@ import { TeamOverviewTab } from '../features/teams/components/TeamOverviewTab'
 import { TeamPMTab, type PMAssistantTabKey } from '../features/teams/components/TeamPMTab'
 import { TeamTabs, type TeamWorkspaceTabKey } from '../features/teams/components/TeamTabs'
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
+import { TeamMemberManagementApiError, removeTeamMember } from '../features/teams/lib/teamMemberManagement'
 import { fetchTeamMembers, fetchTeamSkillTags, fetchTeamWorkspaceBase } from '../features/teams/lib/teams'
 import type {
   TeamMemberRole,
@@ -54,7 +55,7 @@ export function TeamWorkspacePage() {
   const { teamId } = useParams<{ teamId: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { session, user } = useAuth()
 
   const requestedTab = searchParams.get('tab')
   const initialTab: TeamWorkspaceTabKey =
@@ -83,6 +84,9 @@ export function TeamWorkspacePage() {
   const [tabError, setTabError] = useState('')
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [skillsLoaded, setSkillsLoaded] = useState(false)
+  const [memberActionSuccess, setMemberActionSuccess] = useState('')
+  const [memberActionError, setMemberActionError] = useState('')
+  const [pendingMemberId, setPendingMemberId] = useState<string | null>(null)
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -101,6 +105,9 @@ export function TeamWorkspacePage() {
     async function loadBaseData() {
       setIsBaseLoading(true)
       setBaseError('')
+      setMemberActionSuccess('')
+      setMemberActionError('')
+      setPendingMemberId(null)
       setMembers([])
       setSkills([])
       setMembersLoaded(false)
@@ -208,6 +215,58 @@ export function TeamWorkspacePage() {
   const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
   const leaderName = baseData?.leader?.full_name || baseData?.leader?.email || baseData?.leader?.id || '팀 리더'
 
+  async function reloadMembers(currentTeamId: string) {
+    const data = await fetchTeamMembers(currentTeamId)
+    setMembers(data)
+    setMembersLoaded(true)
+  }
+
+  async function handleMemberAction(member: TeamMemberWithProfile, action: 'remove' | 'leave') {
+    if (!teamId) {
+      setMemberActionError('팀 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    if (!session?.access_token) {
+      setMemberActionError('로그인이 만료되었습니다. 다시 로그인해 주세요.')
+      return
+    }
+
+    setPendingMemberId(member.id)
+    setMemberActionSuccess('')
+    setMemberActionError('')
+
+    try {
+      const result = await removeTeamMember({
+        teamId,
+        memberId: member.id,
+        accessToken: session.access_token,
+      })
+
+      if (action === 'leave' || result.action === 'left') {
+        navigate('/teams', {
+          replace: true,
+          state: {
+            feedbackMessage: result.message,
+          },
+        })
+        return
+      }
+
+      await reloadMembers(teamId)
+      setMemberActionSuccess(result.message)
+    } catch (error) {
+      if (error instanceof TeamMemberManagementApiError) {
+        setMemberActionError(error.message)
+        return
+      }
+
+      setMemberActionError(error instanceof Error ? error.message : '멤버 제거 요청에 실패했습니다.')
+    } finally {
+      setPendingMemberId(null)
+    }
+  }
+
   function openPMAssistantTab(tab: PMAssistantTabKey) {
     if (!teamId) return
     setActiveTab('pm')
@@ -303,7 +362,21 @@ export function TeamWorkspacePage() {
                 />
               )}
 
-              {activeTab === 'members' && <TeamMembersTab members={members} isLeader={Boolean(isLeader)} />}
+              {activeTab === 'members' && (
+                <TeamMembersTab
+                  members={members}
+                  isLeader={Boolean(isLeader)}
+                  currentUserId={user?.id ?? null}
+                  pendingMemberId={pendingMemberId}
+                  successMessage={memberActionSuccess}
+                  errorMessage={memberActionError}
+                  onClearMessage={() => {
+                    setMemberActionSuccess('')
+                    setMemberActionError('')
+                  }}
+                  onConfirmMemberAction={handleMemberAction}
+                />
+              )}
 
               {activeTab === 'tasks' && teamId && (
                 <div className="space-y-4">

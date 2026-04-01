@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../features/auth/context/useAuth'
@@ -9,10 +9,27 @@ import type { TeamListItem } from '../features/teams/types/team'
 
 export function TeamListPage() {
   const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [teams, setTeams] = useState<TeamListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [feedbackMessage, setFeedbackMessage] = useState('')
   const [joiningTeamId, setJoiningTeamId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const incomingMessage =
+      location.state && typeof location.state === 'object' && 'feedbackMessage' in location.state
+        ? location.state.feedbackMessage
+        : null
+
+    if (typeof incomingMessage !== 'string' || !incomingMessage.trim()) {
+      return
+    }
+
+    setFeedbackMessage(incomingMessage)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     let isMounted = true
@@ -89,6 +106,12 @@ export function TeamListPage() {
       {!isLoading && errorMessage && (
         <Card className="border-rose-200 bg-rose-50">
           <p className="text-sm text-rose-600">{errorMessage}</p>
+        </Card>
+      )}
+
+      {!isLoading && !errorMessage && feedbackMessage && (
+        <Card className="border-emerald-200 bg-emerald-50">
+          <p className="text-sm text-emerald-700">{feedbackMessage}</p>
         </Card>
       )}
 

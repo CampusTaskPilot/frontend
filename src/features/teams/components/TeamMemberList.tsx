@@ -1,8 +1,15 @@
 import { Badge } from '../../../components/ui/Badge'
+import { Button } from '../../../components/ui/Button'
 import type { TeamMemberWithProfile } from '../types/team'
+
+type TeamMemberActionKind = 'remove' | 'leave'
 
 interface TeamMemberListProps {
   members: TeamMemberWithProfile[]
+  isLeader: boolean
+  currentUserId: string | null
+  pendingMemberId: string | null
+  onActionClick: (member: TeamMemberWithProfile, action: TeamMemberActionKind) => void
 }
 
 function roleLabel(role: string) {
@@ -15,37 +22,81 @@ function displayName(member: TeamMemberWithProfile) {
   return member.profile?.full_name || member.profile?.email || member.user_id
 }
 
-export function TeamMemberList({ members }: TeamMemberListProps) {
+function getActionForMember(params: {
+  member: TeamMemberWithProfile
+  isLeader: boolean
+  currentUserId: string | null
+}): TeamMemberActionKind | null {
+  const { member, isLeader, currentUserId } = params
+  const isSelf = member.user_id === currentUserId
+  const isLeaderRow = member.role === 'leader'
+
+  if (isLeader && isSelf) {
+    return null
+  }
+
+  if (!isLeader && isSelf) {
+    return 'leave'
+  }
+
+  if (isLeader && !isLeaderRow) {
+    return 'remove'
+  }
+
+  return null
+}
+
+export function TeamMemberList({
+  members,
+  isLeader,
+  currentUserId,
+  pendingMemberId,
+  onActionClick,
+}: TeamMemberListProps) {
   if (members.length === 0) {
     return (
       <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-4 text-sm text-campus-500">
-        팀원이 아직 없습니다.
+        아직 등록된 멤버가 없습니다.
       </div>
     )
   }
 
-  const sortedMembers = [...members].sort((a, b) => {
-    if (a.role === 'leader' && b.role !== 'leader') return -1
-    if (a.role !== 'leader' && b.role === 'leader') return 1
-    return 0
-  })
-
   return (
     <div className="space-y-3">
-      {sortedMembers.map((member) => (
-        <div
-          key={`${member.team_id}-${member.user_id}`}
-          className="flex flex-col gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-3 md:flex-row md:items-center md:justify-between"
-        >
-          <div>
-            <p className="font-medium text-campus-900">{displayName(member)}</p>
-            <p className="text-xs text-campus-500">{member.profile?.email ?? member.user_id}</p>
+      {members.map((member) => {
+        const action = getActionForMember({ member, isLeader, currentUserId })
+        const isPending = pendingMemberId === member.id
+
+        return (
+          <div
+            key={`${member.team_id}-${member.user_id}`}
+            className="flex flex-col gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-3"
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-campus-900">{displayName(member)}</p>
+                <p className="truncate text-xs text-campus-500">{member.profile?.email ?? member.user_id}</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={member.role === 'leader' ? 'success' : 'neutral'}>{roleLabel(member.role)}</Badge>
+                {action && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onActionClick(member, action)}
+                    disabled={isPending}
+                    className="border-rose-200 text-rose-700 hover:bg-rose-50 focus-visible:outline-rose-300"
+                  >
+                    {isPending ? '처리 중...' : action === 'leave' ? '탈퇴' : '추방'}
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-          <Badge variant={member.role === 'leader' ? 'success' : 'neutral'}>
-            {roleLabel(member.role)}
-          </Badge>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

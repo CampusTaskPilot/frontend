@@ -71,6 +71,17 @@ export interface TeamWorkspaceBase {
   skills: TeamSkillTag[]
 }
 
+export type TeamMemberRemovalAction = 'removed' | 'left'
+
+export interface TeamMemberRemovalResponse {
+  accepted: boolean
+  action: TeamMemberRemovalAction
+  team_id: string
+  member_id: string
+  removed_user_id: string
+  message: string
+}
+
 export type TeamTaskStatus = 'todo' | 'in_progress' | 'done'
 export type TeamTaskPriority = 'low' | 'medium' | 'high'
 
