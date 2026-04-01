@@ -49,3 +49,56 @@ export interface DashboardScheduleItem {
   updated_at: string
   team: DashboardTeamSummary | null
 }
+
+export interface DashboardTodayRecommendationItem {
+  todo_id: string
+  task_id: string
+  team_id: string
+  todo_content: string
+  task_title: string
+  priority: TeamTaskPriority
+  due_date: string | null
+  is_done: boolean
+  task_status: TeamTaskStatus
+  is_overdue: boolean
+  is_due_today: boolean
+}
+
+export interface DashboardTodayRecommendation {
+  summary: string
+  items: DashboardTodayRecommendationItem[]
+}
+
+export type DashboardTodayRecommendationStatus =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cooldown'
+
+export interface DashboardTodayRecommendationLog {
+  id: string
+  requested_by: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  recommended_count: number
+  summary: string | null
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface DashboardTodayRecommendationJobStatus {
+  status: DashboardTodayRecommendationStatus
+  cooldown_until: string | null
+  remaining_seconds: number
+  error_message: string | null
+  recommended_count: number
+  last_run_at: string | null
+  current_job_id: string | null
+  latest_log: DashboardTodayRecommendationLog | null
+  recommendation: DashboardTodayRecommendation | null
+}

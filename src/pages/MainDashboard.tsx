@@ -4,6 +4,7 @@ import { Card } from '../components/ui/Card'
 import { useAuth } from '../features/auth/context/useAuth'
 import { DashboardAssignedTaskSection } from '../features/dashboard/components/DashboardAssignedTaskSection'
 import { DashboardScheduleSection } from '../features/dashboard/components/DashboardScheduleSection'
+import { TodayRecommendationCard } from '../features/dashboard/components/TodayRecommendationCard'
 import { WorkSummaryCard } from '../features/dashboard/components/WorkSummaryCard'
 import { useDashboardSchedule } from '../features/dashboard/hooks/useDashboardSchedule'
 import { useDashboardTasks } from '../features/dashboard/hooks/useDashboardTasks'
@@ -74,6 +75,7 @@ export function MainDashboard() {
         </div>
 
         <div className="space-y-5">
+          <TodayRecommendationCard userId={userId} />
           <DashboardScheduleSection
             items={upcomingSchedule}
             isLoading={isScheduleLoading}

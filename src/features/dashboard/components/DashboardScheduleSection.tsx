@@ -34,19 +34,19 @@ export function DashboardScheduleSection({
   errorMessage,
 }: DashboardScheduleSectionProps) {
   return (
-    <section className="space-y-4">
+    <Card className="space-y-4 rounded-[30px] border-campus-200 bg-white/95">
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-600">
           Upcoming Schedule
         </p>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <h2 className="font-display text-2xl text-campus-900">가까운 일정</h2>
-            {/* <p className="mt-1 text-xs leading-6 text-campus-500">
-              업무 다음으로 바로 확인해야 할 오늘 일정과 다가오는 팀 일정을 모았습니다.
-            </p> */}
+            <p className="mt-1 text-sm leading-6 text-campus-500">
+              오늘 이후의 주요 일정을 한 곳에서 빠르게 확인할 수 있습니다.
+            </p>
           </div>
-          <span className="inline-flex rounded-full bg-campus-100 px-3 py-1 text-xs font-medium text-campus-700 ring-1 ring-inset ring-campus-200 ml-auto">
+          <span className="inline-flex shrink-0 rounded-full bg-campus-100 px-3 py-1 text-xs font-medium text-campus-700 ring-1 ring-inset ring-campus-200">
             {isLoading ? '...' : `${items.length}개`}
           </span>
         </div>
@@ -55,19 +55,18 @@ export function DashboardScheduleSection({
       {isLoading ? (
         <ScheduleSkeleton />
       ) : errorMessage ? (
-        <Card className="rounded-[28px] border-rose-200 bg-rose-50 py-5">
+        <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-4 py-5">
           <p className="text-sm text-rose-600">{errorMessage}</p>
-        </Card>
+        </div>
       ) : items.length === 0 ? (
-        <Card className="rounded-[28px] border-campus-200 bg-white/95 py-6">
+        <div className="rounded-[28px] border border-campus-200 bg-campus-50 px-5 py-6">
           <div className="space-y-2">
             <h3 className="text-base font-semibold text-campus-900">가까운 일정이 없습니다</h3>
             <p className="text-sm leading-6 text-campus-500">
-              오늘 이후로 등록된 팀 일정이 아직 없습니다. 팀 워크스페이스의 캘린더 탭에서
-              새 일정을 추가하면 여기에 가장 먼저 표시됩니다.
+              오늘 이후로 등록된 일정이 아직 없습니다. 팀 캘린더에 일정을 추가하면 여기에서 먼저 보여드립니다.
             </p>
           </div>
-        </Card>
+        </div>
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
@@ -75,6 +74,6 @@ export function DashboardScheduleSection({
           ))}
         </div>
       )}
-    </section>
+    </Card>
   )
 }

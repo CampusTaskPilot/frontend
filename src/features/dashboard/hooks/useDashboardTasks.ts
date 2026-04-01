@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { subscribeDashboardDataUpdated } from '../lib/dashboardRecommendations'
 import { fetchAssignedDashboardTasks } from '../lib/dashboard'
 import {
   getDashboardWorkSummary,
@@ -11,6 +12,13 @@ export function useDashboardTasks(userId: string | null) {
   const [assignedTasks, setAssignedTasks] = useState<DashboardAssignedTask[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    return subscribeDashboardDataUpdated(() => {
+      setRefreshKey((current) => current + 1)
+    })
+  }, [])
 
   useEffect(() => {
     if (!userId) {
@@ -47,7 +55,7 @@ export function useDashboardTasks(userId: string | null) {
     return () => {
       isMounted = false
     }
-  }, [userId])
+  }, [refreshKey, userId])
 
   const activeAssignedTasks = useMemo(
     () => sortDashboardAssignedTasks(assignedTasks.filter(isActiveAssignedTask)),

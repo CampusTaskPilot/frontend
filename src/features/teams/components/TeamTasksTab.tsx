@@ -494,6 +494,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     [members],
   )
   const isLeader = currentUserRole === 'leader'
+  const canManageTaskStatusByRole = currentUserRole === 'leader' || currentUserRole === 'admin'
   const workspaceDraftStorageKey = useMemo(() => `team-workspace-draft:${teamId}`, [teamId])
   const isEditing = editingTaskId.length > 0
   const isTaskModalOpen = showCreateForm
@@ -555,8 +556,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   )
 
   const canChangeTaskStatus = useCallback(
-    (task: TeamTaskWithTodos) => Boolean(currentUserId) && task.assignee_id === currentUserId,
-    [currentUserId],
+    (task: TeamTaskWithTodos) =>
+      Boolean(currentUserId) &&
+      (task.assignee_id === currentUserId || canManageTaskStatusByRole),
+    [canManageTaskStatusByRole, currentUserId],
   )
 
   useEffect(() => {
@@ -2128,7 +2131,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     try {
       const latestTask = tasks.find((task) => task.id === taskId)
       if (!latestTask || !canChangeTaskStatus(latestTask)) {
-        setErrorMessage('상태 변경은 담당 미지정 Task는 모두 가능하고, 담당자가 지정되면 해당 담당자만 할 수 있습니다.')
+        setErrorMessage('상태 변경은 담당자 또는 팀 관리자만 할 수 있습니다.')
         return
       }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchDashboardSchedule } from '../lib/dashboard'
+import { subscribeDashboardDataUpdated } from '../lib/dashboardRecommendations'
 import { getUpcomingDashboardSchedule } from '../lib/dashboardSelectors'
 import type { DashboardScheduleItem } from '../types'
 
@@ -7,6 +8,13 @@ export function useDashboardSchedule(userId: string | null) {
   const [scheduleItems, setScheduleItems] = useState<DashboardScheduleItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    return subscribeDashboardDataUpdated(() => {
+      setRefreshKey((current) => current + 1)
+    })
+  }, [])
 
   useEffect(() => {
     if (!userId) {
@@ -43,7 +51,7 @@ export function useDashboardSchedule(userId: string | null) {
     return () => {
       isMounted = false
     }
-  }, [userId])
+  }, [refreshKey, userId])
 
   const upcomingSchedule = useMemo(
     () => getUpcomingDashboardSchedule(scheduleItems, 5),
