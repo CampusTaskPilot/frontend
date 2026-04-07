@@ -358,7 +358,7 @@ export function ProfileEditPage() {
 
   if (isForbidden && userId) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card className="space-y-3 border-rose-200 bg-rose-50">
           <h1 className="font-display text-2xl text-campus-900">접근 불가</h1>
           <p className="text-sm text-rose-600">본인 프로필만 수정할 수 있어요. 프로필 페이지로 이동합니다.</p>
@@ -374,7 +374,7 @@ export function ProfileEditPage() {
 
   if (isLoading) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card>
           <p className="text-sm text-campus-600">프로필 정보를 불러오는 중입니다...</p>
         </Card>
@@ -384,7 +384,7 @@ export function ProfileEditPage() {
 
   if (!userId || !user) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card className="space-y-3 border-rose-200 bg-rose-50">
           <h1 className="font-display text-2xl text-campus-900">프로필 수정</h1>
           <p className="text-sm text-rose-600">접근 정보가 올바르지 않습니다. 다시 로그인해 주세요.</p>
@@ -395,8 +395,8 @@ export function ProfileEditPage() {
 
   return (
     <>
-      <section className="space-y-6">
-        <Card className="space-y-3 bg-gradient-to-r from-brand-50 via-white to-accent-100">
+      <section className="page-shell">
+        <Card className="page-hero space-y-3 bg-[radial-gradient(circle_at_top_left,rgba(77,125,255,0.18),transparent_38%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))]">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600">계정</p>
           <h1 className="font-display text-3xl text-campus-900">프로필 수정</h1>
           <p className="max-w-2xl text-sm text-campus-700">
@@ -409,7 +409,7 @@ export function ProfileEditPage() {
           </div>
         </Card>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[360px,1fr]">
+        <div className="grid items-start gap-6 2xl:grid-cols-[360px,minmax(0,1fr)]">
           <Card className="space-y-5">
             <div className="space-y-2">
               <h2 className="font-display text-2xl text-campus-900">프로필 이미지</h2>

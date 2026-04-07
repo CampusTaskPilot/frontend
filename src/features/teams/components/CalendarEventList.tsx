@@ -39,7 +39,7 @@ export function CalendarEventList({
             <div className="h-px flex-1 bg-campus-200" />
           </div>
 
-          <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {group.events.map((event) => (
               <CalendarEventCard
                 key={event.id}

@@ -102,7 +102,7 @@ export function ProfileViewPage() {
 
   if (isLoading) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card>
           <p className="text-sm text-campus-600">프로필을 불러오는 중입니다...</p>
         </Card>
@@ -112,7 +112,7 @@ export function ProfileViewPage() {
 
   if (errorMessage) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card className="space-y-3 border-rose-200 bg-rose-50">
           <h1 className="font-display text-2xl text-campus-900">프로필</h1>
           <p className="text-sm text-rose-600">{errorMessage}</p>
@@ -122,49 +122,55 @@ export function ProfileViewPage() {
   }
 
   return (
-    <section className="space-y-6">
+    <section className="page-shell">
       <ProfileHeader profile={profile} fallbackName={fallbackName} fallbackEmail={fallbackEmail} />
 
-      <Card className="space-y-4">
-        <h2 className="font-display text-2xl text-campus-900">기본 정보</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <ProfileField label="지역" value={profile?.location} />
-          <ProfileField label="대학교" value={profile?.university} />
-          <ProfileField label="전공" value={profile?.major} />
-          <ProfileField label="학년" value={profile?.grade} />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr),320px]">
+        <div className="space-y-6">
+          <Card className="space-y-4">
+            <h2 className="font-display text-2xl text-campus-900">기본 정보</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <ProfileField label="지역" value={profile?.location} />
+              <ProfileField label="대학교" value={profile?.university} />
+              <ProfileField label="전공" value={profile?.major} />
+              <ProfileField label="학년" value={profile?.grade} />
+            </div>
+            {!profile?.location?.trim() &&
+              !profile?.university?.trim() &&
+              !profile?.major?.trim() &&
+              !profile?.grade?.trim() && (
+                <p className="text-sm text-campus-500">추가 정보가 없습니다.</p>
+              )}
+          </Card>
+
+          <Card className="space-y-4">
+            <h2 className="font-display text-2xl text-campus-900">보유 스킬</h2>
+            <SkillList items={skillItems} emptyMessage="등록된 스킬이 없습니다." />
+          </Card>
         </div>
-        {!profile?.location?.trim() &&
-          !profile?.university?.trim() &&
-          !profile?.major?.trim() &&
-          !profile?.grade?.trim() && (
-            <p className="text-sm text-campus-500">추가 정보가 없습니다.</p>
+
+        <aside className="space-y-6 xl:sticky xl:top-8">
+          <Card className="space-y-4">
+            <h2 className="font-display text-2xl text-campus-900">링크</h2>
+            <div className="flex flex-wrap items-center gap-4">
+              <ExternalLink label="GitHub" href={profile?.github_url} />
+              <ExternalLink label="블로그" href={profile?.blog_url} />
+              <ExternalLink label="포트폴리오" href={profile?.portfolio_url} />
+            </div>
+            {!profile?.github_url?.trim() &&
+              !profile?.blog_url?.trim() &&
+              !profile?.portfolio_url?.trim() && (
+                <p className="text-sm text-campus-500">등록된 링크가 없습니다.</p>
+              )}
+          </Card>
+
+          {isOwnProfile && userId && (
+            <Button asChild className="w-full">
+              <Link to={`/profile/${userId}/edit`}>수정하기</Link>
+            </Button>
           )}
-      </Card>
-
-      <Card className="space-y-4">
-        <h2 className="font-display text-2xl text-campus-900">링크</h2>
-        <div className="flex flex-wrap items-center gap-4">
-          <ExternalLink label="GitHub" href={profile?.github_url} />
-          <ExternalLink label="블로그" href={profile?.blog_url} />
-          <ExternalLink label="포트폴리오" href={profile?.portfolio_url} />
-        </div>
-        {!profile?.github_url?.trim() && !profile?.blog_url?.trim() && !profile?.portfolio_url?.trim() && (
-          <p className="text-sm text-campus-500">등록된 링크가 없습니다.</p>
-        )}
-      </Card>
-
-      <Card className="space-y-4">
-        <h2 className="font-display text-2xl text-campus-900">보유 스킬</h2>
-        <SkillList items={skillItems} emptyMessage="등록된 스킬이 없습니다." />
-      </Card>
-
-      {isOwnProfile && userId && (
-        <div className="flex justify-end">
-          <Button asChild>
-            <Link to={`/profile/${userId}/edit`}>수정하기</Link>
-          </Button>
-        </div>
-      )}
+        </aside>
+      </div>
     </section>
   )
 }

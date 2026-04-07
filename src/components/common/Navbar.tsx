@@ -1,6 +1,7 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../features/auth/context/useAuth'
+import { PageContainer } from '../layout/PageContainer'
 import { Button } from '../ui/Button'
 
 const SERVICE_NAME = 'TaskPilot'
@@ -17,8 +18,8 @@ interface ActionItem {
 }
 
 const guestActions: ActionItem[] = [
-  { label: '로그인', to: '/login', variant: 'ghost' },
-  { label: '회원가입', to: '/signup', variant: 'primary' },
+  { label: '\uB85C\uADF8\uC778', to: '/login', variant: 'ghost' },
+  { label: '\uD68C\uC6D0\uAC00\uC785', to: '/signup', variant: 'primary' },
 ]
 
 export function Navbar() {
@@ -41,7 +42,7 @@ export function Navbar() {
       return user.email.split('@')[0]
     }
 
-    return '사용자'
+    return '\uC0AC\uC6A9\uC790'
   }, [user])
 
   const userMenuItems = useMemo<NavItem[]>(() => {
@@ -50,8 +51,8 @@ export function Navbar() {
     }
 
     return [
-      { label: '프로필', to: `/profile/${user.id}` },
-      { label: '대시보드', to: '/dashboard' },
+      { label: '\uD504\uB85C\uD544', to: `/profile/${user.id}` },
+      { label: '\uB300\uC2DC\uBCF4\uB4DC', to: '/dashboard' },
     ]
   }, [user])
 
@@ -94,15 +95,19 @@ export function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-campus-200/80 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-4 md:px-8 lg:px-10">
-        <Link to="/" className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-accent-400 text-sm font-bold uppercase tracking-widest text-white">
+    <header className="sticky top-0 z-40 border-b border-white/70 bg-white/80 backdrop-blur-xl">
+      <PageContainer className="flex min-h-[var(--app-header-height)] items-center justify-between gap-4">
+        <Link to="/" className="flex min-w-0 items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-campus-900 text-sm font-bold uppercase tracking-[0.24em] text-white shadow-card">
             tp
           </span>
-          <div>
-            <p className="font-display text-lg tracking-tight text-campus-900">{SERVICE_NAME}</p>
-            <p className="text-xs text-campus-500">팀 협업을 위한 스마트 워크스페이스</p>
+          <div className="min-w-0 space-y-1">
+            <p className="font-display text-lg font-semibold tracking-tight text-campus-900 sm:text-xl">
+              {SERVICE_NAME}
+            </p>
+            <p className="hidden break-keep text-sm leading-relaxed text-campus-500 sm:block">
+              {'\uD300 \uC2E4\uD589\uC744 \uC704\uD55C \uC2A4\uB9C8\uD2B8 \uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4'}
+            </p>
           </div>
         </Link>
 
@@ -112,19 +117,19 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={() => setIsMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-full border border-campus-200 bg-white px-4 py-2 text-sm font-medium text-campus-700 transition hover:bg-brand-50"
+                className="inline-flex items-center gap-2 rounded-full border border-campus-200 bg-white/94 px-3 py-2 text-sm font-semibold text-campus-700 transition hover:border-campus-300 hover:bg-campus-50 sm:px-4"
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-campus-100 text-campus-900">
                   {displayName.slice(0, 1)}
                 </span>
-                <span>{displayName}</span>
+                <span className="hidden break-keep sm:inline">{displayName}</span>
               </button>
 
               {isMenuOpen && (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] w-56 rounded-3xl border border-campus-200 bg-white p-2 shadow-card">
-                  <div className="border-b border-campus-100 px-3 py-2">
+                <div className="absolute right-0 top-full mt-3 w-56 rounded-3xl border border-campus-200 bg-white/96 p-2 shadow-card">
+                  <div className="border-b border-campus-100 px-3 py-3">
                     <p className="text-sm font-semibold text-campus-900">{displayName}</p>
-                    <p className="text-xs text-campus-500">{user.email}</p>
+                    <p className="text-sm leading-relaxed text-campus-500">{user.email}</p>
                   </div>
 
                   <div className="mt-2 space-y-1">
@@ -134,9 +139,9 @@ export function Navbar() {
                         to={item.to}
                         onClick={() => setIsMenuOpen(false)}
                         className={[
-                          'block rounded-2xl px-3 py-2 text-sm transition',
+                          'block rounded-2xl px-3 py-2 text-sm font-medium transition',
                           isMenuItemActive(item.to)
-                            ? 'bg-brand-50 font-medium text-brand-600'
+                            ? 'bg-brand-50 text-brand-600'
                             : 'text-campus-700 hover:bg-campus-50',
                         ].join(' ')}
                       >
@@ -147,9 +152,9 @@ export function Navbar() {
                       type="button"
                       onClick={() => void handleSignOut()}
                       disabled={isSubmitting}
-                      className="block w-full rounded-2xl px-3 py-2 text-left text-sm text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
+                      className="block w-full rounded-2xl px-3 py-2 text-left text-sm font-medium text-rose-500 transition hover:bg-rose-50 disabled:opacity-50"
                     >
-                      {isSubmitting ? '로그아웃 중...' : '로그아웃'}
+                      {isSubmitting ? '\uB85C\uADF8\uC544\uC6C3 \uC911...' : '\uB85C\uADF8\uC544\uC6C3'}
                     </button>
                   </div>
                 </div>
@@ -163,8 +168,7 @@ export function Navbar() {
             ))
           )}
         </div>
-      </div>
+      </PageContainer>
     </header>
   )
 }
-

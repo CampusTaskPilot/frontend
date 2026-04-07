@@ -379,7 +379,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
   const selectionProgress = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0
 
   return (
-    <Card className="overflow-hidden rounded-[30px] border-campus-200 bg-white/95 p-0">
+    <Card className="overflow-hidden bg-white/95 p-0">
       <div className="border-b border-campus-100 bg-gradient-to-br from-brand-50/70 via-white to-white px-6 py-6">
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">

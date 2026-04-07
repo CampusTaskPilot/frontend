@@ -62,7 +62,7 @@ export function TeamMemberList({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {members.map((member) => {
         const action = getActionForMember({ member, isLeader, currentUserId })
         const isPending = pendingMemberId === member.id
@@ -70,12 +70,12 @@ export function TeamMemberList({
         return (
           <div
             key={`${member.team_id}-${member.user_id}`}
-            className="flex flex-col gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-3"
+            className="flex h-full flex-col gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 py-4"
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
-                <p className="truncate font-medium text-campus-900">{displayName(member)}</p>
-                <p className="truncate text-xs text-campus-500">{member.profile?.email ?? member.user_id}</p>
+                <p className="line-clamp-1 font-medium text-campus-900">{displayName(member)}</p>
+                <p className="line-clamp-2 text-xs text-campus-500">{member.profile?.email ?? member.user_id}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">

@@ -206,7 +206,7 @@ export function TeamCalendarTab({
   return (
     <>
       <div className="space-y-4">
-        <Card className="overflow-hidden rounded-[32px] border-campus-200 bg-gradient-to-br from-white via-campus-50 to-brand-50 px-5 py-5 sm:px-7 sm:py-6">
+        <Card className="overflow-hidden bg-gradient-to-br from-white via-campus-50 to-brand-50 px-5 py-5 sm:px-6 sm:py-6 lg:px-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-4">
               <div className="inline-flex rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-600 ring-1 ring-inset ring-brand-100">
@@ -215,7 +215,7 @@ export function TeamCalendarTab({
 
               <div className="space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                  <h2 className="font-display text-[28px] leading-none text-campus-900 sm:text-[32px]">
+                  <h2 className="font-display text-xl leading-none text-campus-900 sm:text-2xl lg:text-3xl">
                     팀 일정
                   </h2>
                   <span className="inline-flex w-fit rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-campus-600 ring-1 ring-inset ring-campus-200">
@@ -223,7 +223,7 @@ export function TeamCalendarTab({
                   </span>
                 </div>
 
-                <p className="max-w-2xl text-sm leading-6 text-campus-600 sm:text-[14px]">
+                <p className="max-w-2xl text-sm leading-6 text-campus-600 sm:text-base">
                   날짜별로 정리된 일정을 한눈에 확인하고, 중요한 회의와 마감 일정을 <br/>빠르게 관리할 수 있습니다.
                 </p>
               </div>
@@ -235,7 +235,7 @@ export function TeamCalendarTab({
                 variant="ghost"
                 onClick={() => void loadEvents()}
                 disabled={isLoading}
-                className="min-w-[108px] whitespace-nowrap"
+                className="whitespace-nowrap"
               >
                 새로고침
               </Button>
@@ -253,8 +253,8 @@ export function TeamCalendarTab({
                     }}
                     className={
                       selectionMode
-                        ? 'min-w-[132px] whitespace-nowrap border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                        : 'min-w-[132px] whitespace-nowrap'
+                        ? 'whitespace-nowrap border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                        : 'whitespace-nowrap'
                     }
                   >
                     {selectionMode ? '선택 모드 종료' : '일정 선택 삭제'}
@@ -264,7 +264,7 @@ export function TeamCalendarTab({
                       type="button"
                       variant="ghost"
                       onClick={() => handleDeleteRequest(selectedEventIds)}
-                      className="min-w-[144px] whitespace-nowrap border-rose-200 text-rose-700 hover:bg-rose-50"
+                      className="whitespace-nowrap border-rose-200 text-rose-700 hover:bg-rose-50"
                     >
                       선택한 일정 삭제
                     </Button>
@@ -272,7 +272,7 @@ export function TeamCalendarTab({
                 </>
               )}
               {isLeader && (
-                <Button type="button" onClick={handleOpenCreate} className="min-w-[120px] whitespace-nowrap">
+                <Button type="button" onClick={handleOpenCreate} className="whitespace-nowrap">
                   일정 추가
                 </Button>
               )}

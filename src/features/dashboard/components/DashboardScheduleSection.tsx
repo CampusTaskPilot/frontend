@@ -34,7 +34,7 @@ export function DashboardScheduleSection({
   errorMessage,
 }: DashboardScheduleSectionProps) {
   return (
-    <Card className="space-y-4 rounded-[30px] border-campus-200 bg-white/95">
+    <Card className="space-y-4 bg-white/95">
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-600">
           Upcoming Schedule

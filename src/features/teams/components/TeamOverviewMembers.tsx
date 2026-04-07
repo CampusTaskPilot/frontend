@@ -55,13 +55,13 @@ export function TeamOverviewMembers({ team, members }: TeamOverviewMembersProps)
         </p>
       </div>
 
-      <Card className="rounded-[24px] border-campus-200/80 bg-white/90 p-5 shadow-card">
+      <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
         {sortedMembers.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-campus-200 bg-campus-50 px-5 py-6 text-sm leading-6 text-campus-500">
             아직 팀에 등록된 멤버가 없습니다.
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {sortedMembers.map((member) => {
               const leaderMember = member.user_id === team.leader_id || isLeaderRole(member.role)
 
@@ -69,7 +69,7 @@ export function TeamOverviewMembers({ team, members }: TeamOverviewMembersProps)
                 <article
                   key={`${member.team_id}-${member.user_id}`}
                   className={cn(
-                    'rounded-[22px] border p-4 transition duration-200 hover:-translate-y-0.5',
+                    'rounded-2xl border p-4 transition duration-200 hover:-translate-y-0.5',
                     leaderMember
                       ? 'border-brand-100 bg-[linear-gradient(180deg,#fbfdff_0%,#eef4ff_100%)]'
                       : 'border-campus-200 bg-campus-50/60',
@@ -81,7 +81,7 @@ export function TeamOverviewMembers({ team, members }: TeamOverviewMembersProps)
                     <div className="min-w-0 flex-1 space-y-4">
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate text-lg font-semibold tracking-tight text-campus-900">
+                          <h3 className="line-clamp-1 text-lg font-semibold tracking-tight text-campus-900">
                             {displayName(member)}
                           </h3>
                           {leaderMember && (
@@ -90,7 +90,7 @@ export function TeamOverviewMembers({ team, members }: TeamOverviewMembersProps)
                             </span>
                           )}
                         </div>
-                        <p className="truncate text-sm text-campus-500">{member.profile?.email ?? member.user_id}</p>
+                        <p className="line-clamp-2 text-sm text-campus-500">{member.profile?.email ?? member.user_id}</p>
                       </div>
                     </div>
                   </div>

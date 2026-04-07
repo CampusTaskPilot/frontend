@@ -57,6 +57,14 @@ export interface TeamListItem extends TeamRecord {
   current_user_role: TeamMemberRole | null
 }
 
+export interface PaginatedTeamListResult {
+  items: TeamListItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export interface TeamDetailData {
   team: TeamRecord | null
   members: TeamMemberWithProfile[]

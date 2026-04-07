@@ -153,8 +153,8 @@ export function TeamCreatePage() {
   }
 
   return (
-    <section className="space-y-6">
-      <Card className="space-y-3 bg-gradient-to-r from-brand-50 via-white to-accent-100">
+    <section className="page-shell">
+      <Card className="page-hero space-y-3 bg-[radial-gradient(circle_at_top_left,rgba(77,125,255,0.18),transparent_38%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))]">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600">팀</p>
         <h1 className="font-display text-3xl text-campus-900">팀 생성하기</h1>
         <p className="text-sm text-campus-700">

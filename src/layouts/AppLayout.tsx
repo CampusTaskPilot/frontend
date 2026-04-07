@@ -1,17 +1,18 @@
 import { Outlet } from 'react-router-dom'
 import { Navbar } from '../components/common/Navbar'
+import { PageContainer } from '../components/layout/PageContainer'
 import { AppSidebar } from '../components/layout/AppSidebar'
 
 export function AppLayout() {
   return (
-    <div className="grid min-h-screen grid-rows-[auto,1fr] bg-campus-50">
+    <div className="app-shell grid min-h-screen grid-rows-[auto,1fr]">
       <Navbar />
-      <div className="grid min-h-0 grid-cols-1 lg:grid-cols-[260px,1fr]">
+      <div className="mx-auto grid min-h-0 w-full max-w-screen-2xl grid-cols-1 lg:grid-cols-[280px,minmax(0,1fr)] xl:px-4">
         <AppSidebar />
-        <main className="min-h-0 overflow-y-auto bg-campus-50 px-5 py-8 md:px-8 lg:px-10 lg:py-10">
-          <div className="mx-auto max-w-6xl space-y-10">
+        <main className="min-h-0 overflow-y-auto py-5 sm:py-6 lg:px-4 lg:py-8 xl:py-10">
+          <PageContainer className="page-shell" size="wide">
             <Outlet />
-          </div>
+          </PageContainer>
         </main>
       </div>
     </div>

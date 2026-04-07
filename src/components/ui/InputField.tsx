@@ -15,19 +15,19 @@ export function InputField({
   ...props
 }: InputFieldProps) {
   return (
-    <label className="space-y-2 text-sm font-medium text-campus-700">
-      <span>{label}</span>
+    <label className="space-y-2.5 text-sm font-medium text-campus-700">
+      <span className="text-[0.95rem]">{label}</span>
       <div className="relative">
         <input
           className={cn(
-            'w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200',
-            endAdornment ? 'pr-14' : '',
+            'min-h-[3.25rem] w-full rounded-[1.15rem] border border-campus-200 bg-white/92 px-4 py-3 text-[15px] text-campus-900 outline-none transition placeholder:text-campus-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100',
+            endAdornment ? 'pr-20' : '',
             className,
           )}
           {...props}
         />
         {endAdornment && (
-          <span className="absolute inset-y-0 right-3 flex items-center text-xs text-campus-500">
+          <span className="absolute inset-y-0 right-4 flex items-center text-xs text-campus-500">
             {endAdornment}
           </span>
         )}

@@ -5,12 +5,12 @@ import { LoginForm } from '../features/auth/components/LoginForm'
 
 export function LoginPage() {
   return (
-    <div className="min-h-screen bg-campus-grid">
+    <div className="app-shell min-h-screen">
       <Navbar />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2">
-        <section className="flex min-h-[calc(100vh-76px)] flex-col justify-center gap-6 px-6 py-12 md:px-10">
-          <Card className="mx-auto w-full max-w-xl space-y-6">
+      <div className="mx-auto grid min-h-[calc(100vh-var(--app-header-height))] w-full max-w-[88rem] grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,0.9fr),minmax(420px,0.8fr)] lg:px-8 xl:px-10">
+        <section className="flex min-h-[calc(100vh-var(--app-header-height)-3rem)] flex-col justify-center">
+          <Card className="mx-auto w-full max-w-[34rem] space-y-6 border-white/80 bg-white/92 p-6 sm:p-8">
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600">
                 다시 오신 것을 환영합니다
@@ -32,8 +32,8 @@ export function LoginPage() {
           </Card>
         </section>
 
-        <section className="hidden min-h-[calc(100vh-76px)] bg-white p-10 lg:flex lg:flex-col lg:justify-center">
-          <div className="mx-auto w-full max-w-xl space-y-4">
+        <section className="hidden min-h-[calc(100vh-var(--app-header-height)-3rem)] rounded-[2rem] border border-white/70 bg-white/78 p-8 shadow-[0_22px_54px_rgba(26,34,51,0.08)] lg:flex lg:flex-col lg:justify-center xl:p-10">
+          <div className="mx-auto w-full max-w-xl space-y-5">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-campus-500">
               안전한 인증
             </p>

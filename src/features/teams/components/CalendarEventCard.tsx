@@ -55,7 +55,7 @@ export function CalendarEventCard({
   return (
     <Card
       className={cn(
-        'space-y-4 rounded-[28px] border-campus-200 bg-white/90 p-5 shadow-sm',
+        'flex h-full flex-col justify-between space-y-4 border-campus-200 bg-white/90 p-5 shadow-sm',
         isSelected && 'border-rose-200 ring-1 ring-rose-100',
       )}
     >
@@ -88,8 +88,8 @@ export function CalendarEventCard({
           </div>
 
           <div className="space-y-1">
-            <h4 className="font-display text-xl text-campus-900">{event.title}</h4>
-            <p className="text-sm leading-6 text-campus-600">
+            <h4 className="line-clamp-2 font-display text-lg text-campus-900 sm:text-xl">{event.title}</h4>
+            <p className="line-clamp-3 text-sm leading-6 text-campus-600">
               {event.description?.trim() || '설명이 아직 없습니다. 간단한 맥락을 적어두면 팀원들이 일정을 더 빨리 이해할 수 있습니다.'}
             </p>
           </div>

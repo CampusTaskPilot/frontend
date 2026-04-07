@@ -13,7 +13,7 @@ interface DashboardAssignedTaskSectionProps {
 
 function DashboardTaskSkeleton() {
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="grid gap-4 lg:grid-cols-2">
       {Array.from({ length: 4 }).map((_, index) => (
         <Card key={index} className="animate-pulse space-y-4 rounded-[30px] p-5">
           <div className="h-3 w-24 rounded-full bg-campus-100" />
@@ -110,7 +110,7 @@ export function DashboardAssignedTaskSection({
       ) : tasks.length === 0 ? (
         <EmptyAssignedTasks />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           {tasks.map((task) => (
             <AssignedTaskCard key={task.id} task={task} />
           ))}

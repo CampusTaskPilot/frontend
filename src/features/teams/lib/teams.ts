@@ -1,6 +1,7 @@
 ﻿import { supabase } from '../../../lib/supabase'
 import { extractTeamImagePath, removeTeamImageByPath, uploadTeamImage } from './teamProfileImages'
 import type {
+  PaginatedTeamListResult,
   ProfileSummary,
   SidebarTeamItem,
   SidebarTeams,
@@ -117,6 +118,7 @@ function normalizeOptionalText(value: string) {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
 }
+
 function describeError(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) {
     return error.message
@@ -128,6 +130,51 @@ function describeError(error: unknown, fallback: string) {
     }
   }
   return fallback
+}
+
+async function fetchTeamsByMembershipRole(userId: string, role: TeamMemberRole): Promise<SidebarTeamItem[]> {
+  const membershipsResult = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', userId)
+    .eq('role', role)
+    .eq('status', 'active')
+    .order('joined_at', { ascending: false })
+
+  if (membershipsResult.error) {
+    throw membershipsResult.error
+  }
+
+  const orderedTeamIds = ((membershipsResult.data ?? []) as Array<Record<string, unknown>>)
+    .map((membership) => String(membership.team_id ?? ''))
+    .filter(Boolean)
+
+  if (orderedTeamIds.length === 0) {
+    return []
+  }
+
+  const teamsResult = await supabase
+    .from('teams')
+    .select('id,name,summary')
+    .in('id', orderedTeamIds)
+    .order('created_at', { ascending: false })
+
+  if (teamsResult.error) {
+    throw teamsResult.error
+  }
+
+  const teamMap = new Map<string, SidebarTeamItem>(
+    ((teamsResult.data ?? []) as Array<Record<string, unknown>>).map((team) => [
+      String(team.id ?? ''),
+      {
+        id: String(team.id ?? ''),
+        name: String(team.name ?? ''),
+        summary: typeof team.summary === 'string' ? team.summary : null,
+      },
+    ]),
+  )
+
+  return orderedTeamIds.map((teamId) => teamMap.get(teamId)).filter((team): team is SidebarTeamItem => Boolean(team))
 }
 
 export async function fetchSkillOptions() {
@@ -500,21 +547,60 @@ export async function fetchTeamDetail(teamId: string, userId: string | null): Pr
   }
 }
 
-export async function fetchTeamList(userId: string | null) {
-  const [teamsResult, teamMembersResult] = await Promise.all([
-    supabase.from('teams').select(TEAM_SELECT_COLUMNS).order('created_at', { ascending: false }),
-    supabase.from('team_members').select('id,team_id,user_id,role,status,joined_at'),
-  ])
+export async function fetchTeamList(params: {
+  userId: string | null
+  search?: string
+  page?: number
+  pageSize?: number
+}): Promise<PaginatedTeamListResult> {
+  const { userId, search = '', page = 1, pageSize = 10 } = params
+  const normalizedSearch = search.trim()
+  const safePage = Math.max(1, page)
+  const safePageSize = Math.max(1, pageSize)
+  const rangeFrom = (safePage - 1) * safePageSize
+  const rangeTo = rangeFrom + safePageSize - 1
+
+  let teamsQuery = supabase
+    .from('teams')
+    .select(TEAM_SELECT_COLUMNS, { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(rangeFrom, rangeTo)
+
+  if (normalizedSearch) {
+    teamsQuery = teamsQuery.ilike('name', `%${normalizedSearch}%`)
+  }
+
+  const teamsResult = await teamsQuery
 
   if (teamsResult.error) {
     throw teamsResult.error
   }
 
+  const teams = ((teamsResult.data ?? []) as unknown[]).map(toTeamRecord)
+  const totalCount = teamsResult.count ?? 0
+  const totalPages = totalCount > 0 ? Math.ceil(totalCount / safePageSize) : 1
+  const teamIds = teams.map((team) => team.id)
+
+  if (teamIds.length === 0) {
+    return {
+      items: [],
+      totalCount,
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages,
+    }
+  }
+
+  const teamMembersResult = await supabase
+    .from('team_members')
+    .select('id,team_id,user_id,role,status,joined_at')
+    .in('team_id', teamIds)
+    .eq('status', 'active')
+
   if (teamMembersResult.error) {
     throw teamMembersResult.error
   }
 
-  const teams = ((teamsResult.data ?? []) as unknown[]).map(toTeamRecord)
   const allMembers = ((teamMembersResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
   const memberCountByTeamId = new Map<string, number>()
   const userRoleByTeamId = new Map<string, TeamMemberRole>()
@@ -555,7 +641,13 @@ export async function fetchTeamList(userId: string | null) {
     current_user_role: userRoleByTeamId.get(team.id) ?? null,
   }))
 
-  return result
+  return {
+    items: result,
+    totalCount,
+    page: safePage,
+    pageSize: safePageSize,
+    totalPages,
+  }
 }
 
 export async function joinTeam(teamId: string, userId: string) {
@@ -606,59 +698,10 @@ export async function joinTeam(teamId: string, userId: string) {
 }
 
 export async function fetchSidebarTeams(userId: string): Promise<SidebarTeams> {
-  const membershipsResult = await supabase
-    .from('team_members')
-    .select('id,team_id,user_id,role,status,joined_at')
-    .eq('user_id', userId)
-
-  if (membershipsResult.error) {
-    throw membershipsResult.error
-  }
-
-  const memberships = ((membershipsResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
-  const teamIds = Array.from(new Set(memberships.map((membership) => membership.team_id))).filter(Boolean)
-
-  if (teamIds.length === 0) {
-    return { managedTeams: [], joinedTeams: [] }
-  }
-
-  const teamsResult = await supabase
-    .from('teams')
-    .select('id,name,summary')
-    .in('id', teamIds)
-    .order('created_at', { ascending: false })
-
-  if (teamsResult.error) {
-    throw teamsResult.error
-  }
-
-  const teamMap = new Map<string, SidebarTeamItem>(
-    ((teamsResult.data ?? []) as Array<Record<string, unknown>>).map((team) => [
-      String(team.id ?? ''),
-      {
-        id: String(team.id ?? ''),
-        name: String(team.name ?? ''),
-        summary: typeof team.summary === 'string' ? team.summary : null,
-      },
-    ]),
-  )
-
-  const managedTeams: SidebarTeamItem[] = []
-  const joinedTeams: SidebarTeamItem[] = []
-
-  memberships.forEach((membership) => {
-    const team = teamMap.get(membership.team_id)
-    if (!team) return
-
-    if (membership.role === 'leader') {
-      managedTeams.push(team)
-      return
-    }
-
-    if (membership.role === 'member') {
-      joinedTeams.push(team)
-    }
-  })
+  const [managedTeams, joinedTeams] = await Promise.all([
+    fetchTeamsByMembershipRole(userId, 'leader'),
+    fetchTeamsByMembershipRole(userId, 'member'),
+  ])
 
   return { managedTeams, joinedTeams }
 }

@@ -16,7 +16,7 @@ export function TeamOverviewSkills({ skills }: TeamOverviewSkillsProps) {
         </p>
       </div>
 
-      <Card className="rounded-[24px] border-campus-200/80 bg-white/90 p-5 shadow-card">
+      <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
         {skills.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             {skills.map((skill) => (

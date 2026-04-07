@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,24 +8,79 @@
 @layer base {
   :root {
     color-scheme: light;
+    --app-header-height: 5rem;
+  }
+
+  * {
+    @apply border-campus-200;
+  }
+
+  html {
+    @apply bg-campus-50;
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply min-h-screen bg-campus-50 text-campus-900 antialiased;
-    background-image: radial-gradient(circle at top, rgba(77, 125, 255, 0.18), transparent 48%),
-      radial-gradient(circle at 88% 8%, rgba(33, 199, 168, 0.16), transparent 36%),
-      linear-gradient(180deg, #f7faff 0%, #eef3fb 45%, #f7faff 100%);
-    font-family: 'Noto Sans KR', sans-serif;
+    @apply min-h-screen text-campus-900 antialiased;
+    background-color: #f4f7fb;
+    background-image:
+      radial-gradient(circle at top left, rgba(77, 125, 255, 0.12), transparent 30%),
+      radial-gradient(circle at 100% 0%, rgba(33, 199, 168, 0.08), transparent 18%),
+      linear-gradient(180deg, #f8fbff 0%, #f4f7fb 40%, #eef3f9 100%);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    line-height: 1.5;
   }
 
   h1,
   h2,
   h3,
   .font-display {
-    font-family: 'Montserrat', 'Noto Sans KR', sans-serif;
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   }
 
   #root {
     @apply min-h-screen;
+  }
+
+  ::selection {
+    @apply bg-brand-100 text-campus-900;
+  }
+
+  a,
+  button,
+  input,
+  textarea,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply min-h-screen bg-[linear-gradient(180deg,rgba(248,251,255,0.94)_0%,rgba(238,243,251,0.96)_100%)];
+  }
+
+  .page-shell {
+    @apply space-y-8 lg:space-y-10;
+  }
+
+  .page-hero {
+    @apply overflow-hidden rounded-[2rem] border shadow-[0_24px_60px_rgba(26,34,51,0.08)] backdrop-blur-xl;
+    border-color: rgba(255, 255, 255, 0.7);
+    background-color: rgba(255, 255, 255, 0.88);
+  }
+
+  .page-hero-inner {
+    @apply grid gap-6 p-6 sm:p-8 xl:gap-8 xl:p-10;
+  }
+
+  .panel-surface {
+    @apply rounded-[1.5rem] border shadow-[0_18px_44px_rgba(26,34,51,0.06)] backdrop-blur;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.88);
+  }
+
+  .section-title {
+    @apply text-sm font-semibold tracking-[0.18em] text-campus-500;
   }
 }

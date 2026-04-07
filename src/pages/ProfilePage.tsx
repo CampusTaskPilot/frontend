@@ -7,7 +7,7 @@ export function ProfilePage() {
 
   if (isLoading) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card>
           <p className="text-sm text-campus-600">계정 정보를 확인하는 중입니다...</p>
         </Card>

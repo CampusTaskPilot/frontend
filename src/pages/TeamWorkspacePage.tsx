@@ -279,7 +279,7 @@ export function TeamWorkspacePage() {
 
   if (isBaseLoading) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card>
           <p className="text-sm text-campus-600">워크스페이스 정보를 불러오는 중입니다...</p>
         </Card>
@@ -289,7 +289,7 @@ export function TeamWorkspacePage() {
 
   if (baseError) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card className="space-y-3 border-rose-200 bg-rose-50">
           <h1 className="font-display text-2xl text-campus-900">워크스페이스</h1>
           <p className="text-sm text-rose-600">{baseError}</p>
@@ -305,7 +305,7 @@ export function TeamWorkspacePage() {
 
   if (!baseData?.team) {
     return (
-      <section className="space-y-6">
+      <section className="page-shell">
         <Card>
           <p className="text-sm text-campus-600">존재하지 않는 팀이거나 접근 권한이 없습니다.</p>
         </Card>
@@ -314,7 +314,7 @@ export function TeamWorkspacePage() {
   }
 
   return (
-    <section className="space-y-6">
+    <section className="page-shell">
       {activeTab !== 'overview' && (
         <TeamHeaderFallback
           teamName={baseData.team.name}
@@ -324,8 +324,8 @@ export function TeamWorkspacePage() {
         />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-        <Card className="h-fit">
+      <div className="grid items-start gap-5 2xl:grid-cols-[260px,minmax(0,1fr)]">
+        <Card className="h-fit xl:sticky xl:top-8">
           <TeamTabs activeTab={activeTab} onChange={setActiveTab} />
         </Card>
 

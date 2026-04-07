@@ -51,7 +51,7 @@ function OverviewSkeleton() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),320px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),minmax(280px,340px)]">
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -141,8 +141,8 @@ export function TeamOverviewTab({
           <TeamOverviewMembers members={members} team={team} />
         </div>
 
-        <aside className="space-y-6 xl:sticky xl:top-4 xl:self-start">
-          <Card className="rounded-[24px] border-campus-200/80 bg-white/90 p-5 shadow-card">
+        <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+          <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
             <div className="space-y-5">
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
@@ -188,7 +188,7 @@ export function TeamOverviewTab({
             </div>
           </Card>
 
-          <Card className="rounded-[24px] border-campus-200/80 bg-white/90 p-5 shadow-card">
+          <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
             <div className="space-y-5">
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">

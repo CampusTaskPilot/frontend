@@ -2343,9 +2343,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4">
       <Card className="overflow-hidden bg-campus-grid">
-        <div className="grid gap-4 xl:grid-cols-[1.5fr,0.9fr]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr),minmax(280px,0.95fr)]">
           <div className="space-y-4">
             <div className="space-y-2">
               <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-100">
@@ -2368,7 +2368,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
             </div>
           </div>
 
-          <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5">
+          <div className="rounded-2xl border border-white/70 bg-white/90 p-5">
             <div className="space-y-4">
               <div>
                 <p className="text-sm font-semibold text-campus-900">빠른 액션</p>
@@ -2582,7 +2582,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
           <div className="flex flex-col gap-3 xl:items-end xl:self-end">
             {isLeader && visibleTasks.length > 0 && (
-              <div className="flex flex-wrap items-center justify-end gap-2 rounded-[1.25rem] border border-campus-200 bg-campus-50/80 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-campus-200 bg-campus-50/80 px-3 py-2">
                 <Button
                   type="button"
                   size="sm"
@@ -2616,7 +2616,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 )}
               </div>
             )}
-            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-[1.25rem] border border-campus-200 bg-white p-1 shadow-sm xl:w-auto">
+            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-2xl border border-campus-200 bg-white p-1 shadow-sm xl:w-auto">
               <button
                 type="button"
                 onClick={() => setActiveView('active')}
@@ -2645,7 +2645,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-[1.4fr,0.8fr,0.8fr,auto,auto]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr),minmax(0,0.8fr),minmax(0,0.8fr),auto,auto]">
           <label className="space-y-2 text-sm font-medium text-campus-700">
             <span>검색</span>
             <input
@@ -2753,7 +2753,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           recommendLabel={aiTaskButtonLabel}
         />
       ) : (
-        <div className="space-y-4">
+        <div className="mx-auto flex max-w-4xl flex-col gap-4">
           {visibleTasks.map((task) => {
             const meta = progressMeta(task.todos)
             const assigneeName = displayAssigneeName(task)
@@ -2791,8 +2791,11 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     : '관리자만 실행할 수 있으며, 같은 Task에는 5분 쿨타임이 적용됩니다.'
 
             return (
-              <Card key={task.id} className={cn('space-y-4 p-5', isTaskSelected && 'border-rose-200 ring-1 ring-rose-100')}>
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <Card
+                key={task.id}
+                className={cn('space-y-4 p-5', isTaskSelected && 'border-rose-200 ring-1 ring-rose-100')}
+              >
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr),minmax(280px,320px)] xl:items-start">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       {isLeader && taskSelectionMode && (
@@ -2842,7 +2845,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                                   )}
                                 >
                                   <span className={cn('h-2 w-2 rounded-full', todo.is_done ? 'bg-emerald-400' : 'bg-rose-400')} />
-                                  <span className={cn('truncate', !todo.is_done && 'text-rose-700', todo.is_done && 'text-campus-500 line-through')}>
+                                  <span className={cn('line-clamp-1', !todo.is_done && 'text-rose-700', todo.is_done && 'text-campus-500 line-through')}>
                                     {todo.content}
                                   </span>
                                 </div>
@@ -2859,7 +2862,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     </div>
                   </div>
 
-                  <div className="grid min-w-full gap-3 rounded-3xl border border-campus-200 bg-campus-50 p-4 xl:min-w-[320px]">
+                  <div className="grid gap-3 rounded-3xl border border-campus-200 bg-campus-50 p-4">
                     <div className="grid gap-2 text-sm text-campus-700">
                       {isLeader && (
                         <div className="flex justify-start">
@@ -2992,7 +2995,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 </div>
 
                 {isExpanded && (
-                  <div className="grid gap-4 xl:grid-cols-[1.35fr,0.85fr]">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(280px,0.8fr)]">
                     <div className="space-y-3">
                       {task.todos.length === 0 ? (
                         <div className="rounded-3xl border border-dashed border-campus-200 bg-campus-50 px-4 py-5 text-sm text-campus-500">
