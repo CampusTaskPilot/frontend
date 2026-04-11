@@ -2693,7 +2693,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   : 'border-campus-200 text-campus-700',
               )}
             >
-              <span>{showMineOnly ? '나에게 할당된 Task만' : '전체 Task 보기'}</span>
+              <span>{showMineOnly ? '할당된 Task만' : '전체 Task 보기'}</span>
               <span className="text-xs">{showMineOnly ? 'ON' : 'OFF'}</span>
             </button>
           </label>

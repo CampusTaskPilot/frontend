@@ -14,6 +14,11 @@ import type {
   TeamMemberRole,
   TeamMemberSkillTag,
   TeamMemberWithProfile,
+  TeamOverviewLayoutVariant,
+  TeamOverviewLinkIconKey,
+  TeamOverviewLinkRecord,
+  TeamOverviewSectionKey,
+  TeamOverviewThemeKey,
   TeamRecord,
   TeamSummary,
   TeamSkillTag,
@@ -25,7 +30,62 @@ export const TEAM_CREATION_LIMIT_MESSAGE = '팀은 최대 3개까지 생성할 �
 const teamsUpdatedEvent = 'taskpilot:teams-updated'
 
 const TEAM_SELECT_COLUMNS =
-  'id,leader_id,name,summary,description,image_url,category,max_members,is_recruiting,created_at'
+  'id,leader_id,name,summary,description,image_url,category,max_members,is_recruiting,created_at,overview_theme_key,overview_layout_variant,overview_emoji,overview_hero_subheadline,overview_banner_url,overview_hero_tags,overview_about_title,overview_goal_title,overview_goal_body,overview_recruiting_title,overview_recruiting_body,overview_recruiting_highlights,overview_work_style_title,overview_work_style_body,overview_work_style_items,overview_rules_title,overview_rules_body,overview_rules_items,overview_links_title,overview_section_order,overview_show_about,overview_show_goal,overview_show_recruiting,overview_show_work_style,overview_show_rules,overview_show_links'
+const OVERVIEW_SECTION_KEYS: TeamOverviewSectionKey[] = [
+  'about',
+  'goal',
+  'recruiting',
+  'work_style',
+  'rules',
+  'links',
+]
+const OVERVIEW_LINK_ICON_KEYS: TeamOverviewLinkIconKey[] = ['github', 'notion', 'figma', 'docs', 'demo', 'link']
+const OVERVIEW_THEME_KEYS: TeamOverviewThemeKey[] = ['sunset', 'ocean', 'forest', 'midnight']
+const OVERVIEW_LAYOUT_VARIANTS: TeamOverviewLayoutVariant[] = ['immersive', 'balanced', 'compact']
+
+function toPlainTextArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function toSectionOrder(value: unknown) {
+  const parsed = toPlainTextArray(value).filter((item): item is TeamOverviewSectionKey =>
+    OVERVIEW_SECTION_KEYS.includes(item as TeamOverviewSectionKey),
+  )
+  const seen = new Set<TeamOverviewSectionKey>()
+  const ordered = parsed.filter((item) => {
+    if (seen.has(item)) {
+      return false
+    }
+
+    seen.add(item)
+    return true
+  })
+
+  return [...ordered, ...OVERVIEW_SECTION_KEYS.filter((item) => !seen.has(item))]
+}
+
+function toThemeKey(value: unknown): TeamOverviewThemeKey | null {
+  return typeof value === 'string' && OVERVIEW_THEME_KEYS.includes(value as TeamOverviewThemeKey)
+    ? (value as TeamOverviewThemeKey)
+    : null
+}
+
+function toLayoutVariant(value: unknown): TeamOverviewLayoutVariant | null {
+  return typeof value === 'string' && OVERVIEW_LAYOUT_VARIANTS.includes(value as TeamOverviewLayoutVariant)
+    ? (value as TeamOverviewLayoutVariant)
+    : null
+}
+
+function toOverviewBoolean(value: unknown, fallback = true) {
+  return typeof value === 'boolean' ? value : fallback
+}
 
 function toTeamRecord(value: unknown): TeamRecord {
   const row = value as Record<string, unknown>
@@ -41,6 +101,56 @@ function toTeamRecord(value: unknown): TeamRecord {
     is_recruiting: typeof row.is_recruiting === 'boolean' ? row.is_recruiting : false,
     created_at: typeof row.created_at === 'string' ? row.created_at : '',
     leader_id: String(row.leader_id ?? ''),
+    overview_theme_key: toThemeKey(row.overview_theme_key),
+    overview_layout_variant: toLayoutVariant(row.overview_layout_variant),
+    overview_emoji: typeof row.overview_emoji === 'string' ? row.overview_emoji : null,
+    overview_hero_subheadline:
+      typeof row.overview_hero_subheadline === 'string' ? row.overview_hero_subheadline : null,
+    overview_banner_url: typeof row.overview_banner_url === 'string' ? row.overview_banner_url : null,
+    overview_hero_tags: toPlainTextArray(row.overview_hero_tags),
+    overview_about_title: typeof row.overview_about_title === 'string' ? row.overview_about_title : null,
+    overview_goal_title: typeof row.overview_goal_title === 'string' ? row.overview_goal_title : null,
+    overview_goal_body: typeof row.overview_goal_body === 'string' ? row.overview_goal_body : null,
+    overview_recruiting_title:
+      typeof row.overview_recruiting_title === 'string' ? row.overview_recruiting_title : null,
+    overview_recruiting_body:
+      typeof row.overview_recruiting_body === 'string' ? row.overview_recruiting_body : null,
+    overview_recruiting_highlights: toPlainTextArray(row.overview_recruiting_highlights),
+    overview_work_style_title:
+      typeof row.overview_work_style_title === 'string' ? row.overview_work_style_title : null,
+    overview_work_style_body:
+      typeof row.overview_work_style_body === 'string' ? row.overview_work_style_body : null,
+    overview_work_style_items: toPlainTextArray(row.overview_work_style_items),
+    overview_rules_title: typeof row.overview_rules_title === 'string' ? row.overview_rules_title : null,
+    overview_rules_body: typeof row.overview_rules_body === 'string' ? row.overview_rules_body : null,
+    overview_rules_items: toPlainTextArray(row.overview_rules_items),
+    overview_links_title: typeof row.overview_links_title === 'string' ? row.overview_links_title : null,
+    overview_section_order: toSectionOrder(row.overview_section_order),
+    overview_show_about: toOverviewBoolean(row.overview_show_about),
+    overview_show_goal: toOverviewBoolean(row.overview_show_goal),
+    overview_show_recruiting: toOverviewBoolean(row.overview_show_recruiting),
+    overview_show_work_style: toOverviewBoolean(row.overview_show_work_style),
+    overview_show_rules: toOverviewBoolean(row.overview_show_rules),
+    overview_show_links: toOverviewBoolean(row.overview_show_links),
+  }
+}
+
+function toTeamOverviewLinkRecord(value: unknown): TeamOverviewLinkRecord {
+  const row = value as Record<string, unknown>
+  const iconKey =
+    typeof row.icon_key === 'string' && OVERVIEW_LINK_ICON_KEYS.includes(row.icon_key as TeamOverviewLinkIconKey)
+      ? (row.icon_key as TeamOverviewLinkIconKey)
+      : 'link'
+
+  return {
+    id: String(row.id ?? ''),
+    team_id: String(row.team_id ?? ''),
+    label: typeof row.label === 'string' ? row.label : '',
+    url: typeof row.url === 'string' ? row.url : '',
+    icon_key: iconKey,
+    position: typeof row.position === 'number' ? row.position : 0,
+    created_at: typeof row.created_at === 'string' ? row.created_at : null,
+    updated_at: typeof row.updated_at === 'string' ? row.updated_at : null,
   }
 }
 
@@ -124,6 +234,38 @@ function displayRole(role: TeamMemberRole) {
 function normalizeOptionalText(value: string) {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizePlainTextArray(values: string[]) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function normalizeOverviewLinkUrl(value: string) {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    throw new Error('링크 URL을 입력해 주세요.')
+  }
+
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(trimmed)
+  } catch {
+    throw new Error('링크는 올바른 URL 형식이어야 합니다.')
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error('링크는 http 또는 https 주소만 사용할 수 있습니다.')
+  }
+
+  return parsedUrl.toString()
 }
 
 function toManagementTeamStatus(isRecruiting: boolean) {
@@ -446,6 +588,20 @@ export async function fetchTeamSkillTags(teamId: string): Promise<TeamSkillTag[]
   }
 
   return ((skillsResult.data ?? []) as unknown[]).map(toTeamSkillTag)
+}
+
+export async function fetchTeamOverviewLinks(teamId: string): Promise<TeamOverviewLinkRecord[]> {
+  const { data, error } = await supabase
+    .from('team_overview_links')
+    .select('id,team_id,label,url,icon_key,position,created_at,updated_at')
+    .eq('team_id', teamId)
+    .order('position', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  return ((data ?? []) as unknown[]).map(toTeamOverviewLinkRecord)
 }
 
 export async function createTeamWithRelations(params: {
@@ -1064,5 +1220,250 @@ export async function updateTeamProfile(params: {
   return {
     team: toTeamRecord(updatedTeam),
     skills: normalizedSkillIds.length > 0 ? await fetchTeamSkillTags(teamId) : [],
+  }
+}
+
+export async function updateTeamOverviewCustomization(params: {
+  teamId: string
+  userId: string
+  overviewThemeKey: TeamOverviewThemeKey
+  overviewLayoutVariant: TeamOverviewLayoutVariant
+  overviewEmoji: string
+  overviewHeroSubheadline: string
+  overviewBannerFile?: File | null
+  removeOverviewBanner?: boolean
+  currentOverviewBannerUrl?: string | null
+  overviewHeroTags: string[]
+  overviewAboutTitle: string
+  overviewGoalTitle: string
+  overviewGoalBody: string
+  overviewRecruitingTitle: string
+  overviewRecruitingBody: string
+  overviewRecruitingHighlights: string[]
+  overviewWorkStyleTitle: string
+  overviewWorkStyleBody: string
+  overviewWorkStyleItems: string[]
+  overviewRulesTitle: string
+  overviewRulesBody: string
+  overviewRulesItems: string[]
+  overviewLinksTitle: string
+  overviewSectionOrder: TeamOverviewSectionKey[]
+  showOverviewAbout: boolean
+  showOverviewGoal: boolean
+  showOverviewRecruiting: boolean
+  showOverviewWorkStyle: boolean
+  showOverviewRules: boolean
+  showOverviewLinks: boolean
+  links: Array<{
+    id?: string
+    label: string
+    url: string
+    icon_key: TeamOverviewLinkIconKey
+  }>
+}) {
+  const {
+    teamId,
+    userId,
+    overviewThemeKey,
+    overviewLayoutVariant,
+    overviewEmoji,
+    overviewHeroSubheadline,
+    overviewBannerFile,
+    removeOverviewBanner = false,
+    currentOverviewBannerUrl = null,
+    overviewHeroTags,
+    overviewAboutTitle,
+    overviewGoalTitle,
+    overviewGoalBody,
+    overviewRecruitingTitle,
+    overviewRecruitingBody,
+    overviewRecruitingHighlights,
+    overviewWorkStyleTitle,
+    overviewWorkStyleBody,
+    overviewWorkStyleItems,
+    overviewRulesTitle,
+    overviewRulesBody,
+    overviewRulesItems,
+    overviewLinksTitle,
+    overviewSectionOrder,
+    showOverviewAbout,
+    showOverviewGoal,
+    showOverviewRecruiting,
+    showOverviewWorkStyle,
+    showOverviewRules,
+    showOverviewLinks,
+    links,
+  } = params
+
+  const [teamAccessResult, membershipResult, existingLinks] = await Promise.all([
+    supabase.from('teams').select(TEAM_SELECT_COLUMNS).eq('id', teamId).maybeSingle(),
+    supabase.from('team_members').select('role').eq('team_id', teamId).eq('user_id', userId).maybeSingle(),
+    fetchTeamOverviewLinks(teamId),
+  ])
+
+  if (teamAccessResult.error) {
+    throw teamAccessResult.error
+  }
+
+  if (membershipResult.error) {
+    throw membershipResult.error
+  }
+
+  if (!teamAccessResult.data) {
+    throw new Error('팀을 찾을 수 없습니다.')
+  }
+
+  const leaderId = String((teamAccessResult.data as Record<string, unknown>).leader_id ?? '')
+  const membershipRole = typeof membershipResult.data?.role === 'string' ? membershipResult.data.role : null
+
+  if (leaderId !== userId && membershipRole !== 'leader') {
+    throw new Error('팀 리더만 개요를 수정할 수 있습니다.')
+  }
+
+  const normalizedLinks = links.map((link, index) => ({
+    id: link.id?.trim() || undefined,
+    label: link.label.trim(),
+    url: normalizeOverviewLinkUrl(link.url),
+    icon_key: OVERVIEW_LINK_ICON_KEYS.includes(link.icon_key) ? link.icon_key : 'link',
+    position: index,
+  }))
+
+  normalizedLinks.forEach((link) => {
+    if (!link.label) {
+      throw new Error('링크 이름을 입력해 주세요.')
+    }
+  })
+
+  const normalizedSectionOrder = toSectionOrder(overviewSectionOrder)
+  const teamPayload: Record<string, unknown> = {
+    overview_theme_key: overviewThemeKey,
+    overview_layout_variant: overviewLayoutVariant,
+    overview_emoji: normalizeOptionalText(overviewEmoji),
+    overview_hero_subheadline: normalizeOptionalText(overviewHeroSubheadline),
+    overview_banner_url: currentOverviewBannerUrl,
+    overview_hero_tags: normalizePlainTextArray(overviewHeroTags),
+    overview_about_title: normalizeOptionalText(overviewAboutTitle),
+    overview_goal_title: normalizeOptionalText(overviewGoalTitle),
+    overview_goal_body: normalizeOptionalText(overviewGoalBody),
+    overview_recruiting_title: normalizeOptionalText(overviewRecruitingTitle),
+    overview_recruiting_body: normalizeOptionalText(overviewRecruitingBody),
+    overview_recruiting_highlights: normalizePlainTextArray(overviewRecruitingHighlights),
+    overview_work_style_title: normalizeOptionalText(overviewWorkStyleTitle),
+    overview_work_style_body: normalizeOptionalText(overviewWorkStyleBody),
+    overview_work_style_items: normalizePlainTextArray(overviewWorkStyleItems),
+    overview_rules_title: normalizeOptionalText(overviewRulesTitle),
+    overview_rules_body: normalizeOptionalText(overviewRulesBody),
+    overview_rules_items: normalizePlainTextArray(overviewRulesItems),
+    overview_links_title: normalizeOptionalText(overviewLinksTitle),
+    overview_section_order: normalizedSectionOrder,
+    overview_show_about: showOverviewAbout,
+    overview_show_goal: showOverviewGoal,
+    overview_show_recruiting: showOverviewRecruiting,
+    overview_show_work_style: showOverviewWorkStyle,
+    overview_show_rules: showOverviewRules,
+    overview_show_links: showOverviewLinks,
+  }
+
+  const previousBannerPath = extractTeamImagePath(currentOverviewBannerUrl)
+  let nextBannerPath: string | null = previousBannerPath
+  let uploadedBannerPath: string | null = null
+
+  if (overviewBannerFile) {
+    try {
+      const uploadedImage = await uploadTeamImage(teamId, overviewBannerFile)
+      uploadedBannerPath = uploadedImage.path
+      nextBannerPath = uploadedImage.path
+      teamPayload.overview_banner_url = uploadedImage.publicUrl
+    } catch (error) {
+      throw new Error('배너 이미지를 업로드하지 못했습니다: ' + describeError(error, 'Storage policy rejected the upload.'))
+    }
+  }
+
+  if (removeOverviewBanner) {
+    nextBannerPath = null
+    teamPayload.overview_banner_url = null
+  }
+
+  const { data: updatedTeam, error: updateError } = await supabase
+    .from('teams')
+    .update(teamPayload)
+    .eq('id', teamId)
+    .select(TEAM_SELECT_COLUMNS)
+    .maybeSingle()
+
+  if (updateError) {
+    if (uploadedBannerPath) {
+      await removeTeamImageByPath(uploadedBannerPath).catch(() => undefined)
+    }
+
+    throw new Error('팀 개요를 저장하지 못했습니다: ' + describeError(updateError, 'The update was rejected by RLS.'))
+  }
+
+  if (!updatedTeam) {
+    if (uploadedBannerPath) {
+      await removeTeamImageByPath(uploadedBannerPath).catch(() => undefined)
+    }
+
+    throw new Error('팀 리더만 개요를 수정할 수 있습니다.')
+  }
+
+  const existingIds = new Set(existingLinks.map((link) => link.id))
+  const nextIds = new Set(normalizedLinks.map((link) => link.id).filter((id): id is string => Boolean(id)))
+  const removedIds = existingLinks.filter((link) => !nextIds.has(link.id)).map((link) => link.id)
+
+  if (removedIds.length > 0) {
+    const { error } = await supabase.from('team_overview_links').delete().in('id', removedIds)
+
+    if (error) {
+      throw error
+    }
+  }
+
+  const linksToUpdate = normalizedLinks.filter((link) => link.id && existingIds.has(link.id))
+  if (linksToUpdate.length > 0) {
+    const results = await Promise.all(
+      linksToUpdate.map((link) =>
+        supabase
+          .from('team_overview_links')
+          .update({
+            label: link.label,
+            url: link.url,
+            icon_key: link.icon_key,
+            position: link.position,
+          })
+          .eq('id', link.id ?? ''),
+      ),
+    )
+
+    const failedResult = results.find((result) => result.error)
+    if (failedResult?.error) {
+      throw failedResult.error
+    }
+  }
+
+  const linksToInsert = normalizedLinks.filter((link) => !link.id || !existingIds.has(link.id))
+  if (linksToInsert.length > 0) {
+    const { error } = await supabase.from('team_overview_links').insert(
+      linksToInsert.map((link) => ({
+        team_id: teamId,
+        label: link.label,
+        url: link.url,
+        icon_key: link.icon_key,
+        position: link.position,
+      })),
+    )
+
+    if (error) {
+      throw error
+    }
+  }
+
+  if (previousBannerPath && previousBannerPath !== nextBannerPath) {
+    await removeTeamImageByPath(previousBannerPath).catch(() => undefined)
+  }
+
+  return {
+    team: toTeamRecord(updatedTeam),
+    links: await fetchTeamOverviewLinks(teamId),
   }
 }

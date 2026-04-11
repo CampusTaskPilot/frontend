@@ -11,6 +11,22 @@ export interface TeamSkillTag {
   name: string
 }
 
+export type TeamOverviewThemeKey = 'sunset' | 'ocean' | 'forest' | 'midnight'
+export type TeamOverviewLayoutVariant = 'immersive' | 'balanced' | 'compact'
+export type TeamOverviewSectionKey = 'about' | 'goal' | 'recruiting' | 'work_style' | 'rules' | 'links'
+export type TeamOverviewLinkIconKey = 'github' | 'notion' | 'figma' | 'docs' | 'demo' | 'link'
+
+export interface TeamOverviewLinkRecord {
+  id: string
+  team_id: string
+  label: string
+  url: string
+  icon_key: TeamOverviewLinkIconKey
+  position: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export interface TeamRecord {
   id: string
   name: string
@@ -22,6 +38,32 @@ export interface TeamRecord {
   is_recruiting: boolean
   created_at: string
   leader_id: string
+  overview_theme_key: TeamOverviewThemeKey | null
+  overview_layout_variant: TeamOverviewLayoutVariant | null
+  overview_emoji: string | null
+  overview_hero_subheadline: string | null
+  overview_banner_url: string | null
+  overview_hero_tags: string[]
+  overview_about_title: string | null
+  overview_goal_title: string | null
+  overview_goal_body: string | null
+  overview_recruiting_title: string | null
+  overview_recruiting_body: string | null
+  overview_recruiting_highlights: string[]
+  overview_work_style_title: string | null
+  overview_work_style_body: string | null
+  overview_work_style_items: string[]
+  overview_rules_title: string | null
+  overview_rules_body: string | null
+  overview_rules_items: string[]
+  overview_links_title: string | null
+  overview_section_order: TeamOverviewSectionKey[]
+  overview_show_about: boolean
+  overview_show_goal: boolean
+  overview_show_recruiting: boolean
+  overview_show_work_style: boolean
+  overview_show_rules: boolean
+  overview_show_links: boolean
 }
 
 export interface TeamMemberRecord {
