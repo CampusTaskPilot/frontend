@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { cn } from '../../../lib/cn'
 import { formatDateRangeWithWeekday, getPresetDateRange, validateCustomDateRange } from '../lib/reportDateRange'
 import { fetchPMReportStatus, PMReportApiError, requestPMReport } from '../lib/reportWriter'
@@ -217,6 +218,7 @@ function FullReportPreview({ reportResult }: { reportResult: PMReportResponse })
 }
 
 export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps) {
+  const ime = useImeSafeSubmit()
   const initialRange = useMemo(() => getPresetDateRange('this_week'), [])
 
   const [reportScope, setReportScope] = useState<PMReportScope>('team')
@@ -308,8 +310,7 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
     !cooldownValidationError
   const periodLabel = formatDateRangeWithWeekday(startDate, endDate)
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit() {
     if (!canSubmit) return
 
     setIsSubmitting(true)
@@ -385,7 +386,7 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
           </div>
         </div>
 
-        <form className="space-y-5" onSubmit={handleSubmit}>
+        <form className="space-y-5" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
           <div className="grid gap-3 md:grid-cols-2">
             {REPORT_SCOPE_OPTIONS.map((option) => (
               <button
@@ -488,7 +489,7 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
           )}
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={!canSubmit}>
+            <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={!canSubmit}>
               {isSubmitting
                 ? '보고서 생성 중...'
                 : cooldownValidationError
@@ -588,3 +589,4 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
     </div>
   )
 }
+

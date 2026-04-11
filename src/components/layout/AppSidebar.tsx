@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../features/auth/context/useAuth'
-import { fetchSidebarTeams } from '../../features/teams/lib/teams'
+import { fetchSidebarTeams, subscribeTeamsUpdated } from '../../features/teams/lib/teams'
 import type { SidebarTeamItem } from '../../features/teams/types/team'
 import { Button } from '../ui/Button'
 
@@ -13,11 +13,11 @@ const primaryNavItems = [
   { label: '프로필', to: '/profile' },
 ]
 
-const secondaryNavItems = [
-  { label: '프로젝트', to: '/dashboard/projects', disabled: true },
-  { label: '워크플로우', to: '/dashboard/workflows', disabled: true },
-  { label: '리포트', to: '/dashboard/reports', disabled: true },
-]
+// const secondaryNavItems = [
+//   { label: '프로젝트', to: '/dashboard/projects', disabled: true },
+//   { label: '워크플로우', to: '/dashboard/workflows', disabled: true },
+//   { label: '리포트', to: '/dashboard/reports', disabled: true },
+// ]
 
 function TeamLinkList({
   teams,
@@ -105,21 +105,25 @@ export function AppSidebar() {
     }
 
     void loadSidebarTeams()
+    const unsubscribe = subscribeTeamsUpdated(() => {
+      void loadSidebarTeams()
+    })
 
     return () => {
       isMounted = false
+      unsubscribe()
     }
   }, [user])
 
   return (
-    <aside className="border-b border-white/70 bg-white/72 px-4 py-4 backdrop-blur-xl lg:min-h-[calc(100vh-var(--app-header-height))] lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+    <aside className="border-b border-white/70 bg-white/72 px-4 py-4 backdrop-blur-xl lg:self-start lg:border-b-0 lg:border-r lg:px-5 lg:py-8">
       <div className="space-y-5 lg:sticky lg:top-[calc(var(--app-header-height)+1.5rem)]">
         <div className="space-y-3">
         <p className="text-xs uppercase tracking-[0.3em] text-campus-500">워크스페이스</p>
         <div className="rounded-[1.75rem] border border-white/80 bg-[radial-gradient(circle_at_top_left,rgba(77,125,255,0.14),transparent_48%),linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] px-4 py-4 shadow-[0_14px_34px_rgba(26,34,51,0.06)]">
-          <p className="text-sm font-semibold text-campus-900">작업 흐름은 유지하고 팀 탐색만 정리했습니다.</p>
+          <p className="text-sm font-semibold text-campus-900">지금 진행 중인 팀으로 빠르게 이동해보세요.</p>
           <p className="mt-2 text-sm leading-6 text-campus-600">
-            대시보드와 워크스페이스는 건드리지 않고, 팀 목록 구조만 역할 중심으로 분리했습니다.
+            관리 중인 팀과 참여 중인 팀을 구분해 두어 현재 필요한 워크스페이스를 바로 열 수 있습니다.
           </p>
         </div>
         </div>
@@ -199,7 +203,7 @@ export function AppSidebar() {
         </div>
         </div>
 
-        <div className="space-y-1 text-sm font-medium">
+        {/* <div className="space-y-1 text-sm font-medium">
         {secondaryNavItems.map((item) => (
           <span
             key={item.label}
@@ -209,7 +213,7 @@ export function AppSidebar() {
             {item.label}
           </span>
         ))}
-        </div>
+        </div> */}
       </div>
     </aside>
   )

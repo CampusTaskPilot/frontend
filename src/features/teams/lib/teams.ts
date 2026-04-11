@@ -7,15 +7,22 @@ import type {
   SidebarTeams,
   SkillOption,
   TeamDetailData,
+  TeamDeletionResult,
   TeamListItem,
+  TeamMember,
   TeamMemberRecord,
   TeamMemberRole,
   TeamMemberSkillTag,
   TeamMemberWithProfile,
   TeamRecord,
+  TeamSummary,
   TeamSkillTag,
   TeamWorkspaceBase,
 } from '../types/team'
+
+export const TEAM_CREATION_LIMIT = 3
+export const TEAM_CREATION_LIMIT_MESSAGE = '팀은 최대 3개까지 생성할 수 있습니다.'
+const teamsUpdatedEvent = 'taskpilot:teams-updated'
 
 const TEAM_SELECT_COLUMNS =
   'id,leader_id,name,summary,description,image_url,category,max_members,is_recruiting,created_at'
@@ -119,6 +126,14 @@ function normalizeOptionalText(value: string) {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function toManagementTeamStatus(isRecruiting: boolean) {
+  return isRecruiting ? 'Active' : 'Paused'
+}
+
+function toManagementAvailability(role: string): TeamMember['availability'] {
+  return role === 'leader' ? 'Focus' : 'At capacity'
+}
+
 function describeError(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) {
     return error.message
@@ -130,6 +145,68 @@ function describeError(error: unknown, fallback: string) {
     }
   }
   return fallback
+}
+
+function getErrorCode(error: unknown) {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === 'string') {
+      return code
+    }
+  }
+
+  return ''
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') {
+      return message
+    }
+  }
+
+  return ''
+}
+
+export function isTeamCreationLimitError(error: unknown) {
+  const code = getErrorCode(error)
+  const message = getErrorMessage(error).toLowerCase()
+
+  if (message.includes(TEAM_CREATION_LIMIT_MESSAGE.toLowerCase())) {
+    return true
+  }
+
+  return (
+    code === '42501' &&
+    (message.includes('row-level security') || message.includes('violates row-level security policy')) &&
+    message.includes('teams')
+  )
+}
+
+export function getTeamCreationErrorMessage(error: unknown) {
+  if (isTeamCreationLimitError(error)) {
+    return TEAM_CREATION_LIMIT_MESSAGE
+  }
+
+  return describeError(error, '팀 생성에 실패했습니다.')
+}
+
+export async function fetchLeaderTeamCount(userId: string) {
+  const { count, error } = await supabase
+    .from('teams')
+    .select('id', { count: 'exact', head: true })
+    .eq('leader_id', userId)
+
+  if (error) {
+    throw error
+  }
+
+  return count ?? 0
 }
 
 async function fetchTeamsByMembershipRole(userId: string, role: TeamMemberRole): Promise<SidebarTeamItem[]> {
@@ -383,6 +460,11 @@ export async function createTeamWithRelations(params: {
 }) {
   const { userId, name, summary, description, maxMembers, category, isRecruiting, skillIds } = params
   const normalizedSkillIds = uniqueNumbers(skillIds)
+  const leaderTeamCount = await fetchLeaderTeamCount(userId)
+
+  if (leaderTeamCount >= TEAM_CREATION_LIMIT) {
+    throw new Error(TEAM_CREATION_LIMIT_MESSAGE)
+  }
 
   const teamPayload = {
     leader_id: userId,
@@ -439,6 +521,7 @@ export async function createTeamWithRelations(params: {
     throw error
   }
 
+  notifyTeamsUpdated()
   return teamId
 }
 
@@ -550,11 +633,14 @@ export async function fetchTeamDetail(teamId: string, userId: string | null): Pr
 export async function fetchTeamList(params: {
   userId: string | null
   search?: string
+  category?: string
+  recruiting?: boolean | null
   page?: number
   pageSize?: number
 }): Promise<PaginatedTeamListResult> {
-  const { userId, search = '', page = 1, pageSize = 10 } = params
+  const { userId, search = '', category = '', recruiting = null, page = 1, pageSize = 10 } = params
   const normalizedSearch = search.trim()
+  const normalizedCategory = category.trim()
   const safePage = Math.max(1, page)
   const safePageSize = Math.max(1, pageSize)
   const rangeFrom = (safePage - 1) * safePageSize
@@ -570,6 +656,14 @@ export async function fetchTeamList(params: {
     teamsQuery = teamsQuery.ilike('name', `%${normalizedSearch}%`)
   }
 
+  if (normalizedCategory) {
+    teamsQuery = teamsQuery.eq('category', normalizedCategory)
+  }
+
+  if (typeof recruiting === 'boolean') {
+    teamsQuery = teamsQuery.eq('is_recruiting', recruiting)
+  }
+
   const teamsResult = await teamsQuery
 
   if (teamsResult.error) {
@@ -578,7 +672,7 @@ export async function fetchTeamList(params: {
 
   const teams = ((teamsResult.data ?? []) as unknown[]).map(toTeamRecord)
   const totalCount = teamsResult.count ?? 0
-  const totalPages = totalCount > 0 ? Math.ceil(totalCount / safePageSize) : 1
+  const totalPages = totalCount > 0 ? Math.ceil(totalCount / safePageSize) : 0
   const teamIds = teams.map((team) => team.id)
 
   if (teamIds.length === 0) {
@@ -704,6 +798,136 @@ export async function fetchSidebarTeams(userId: string): Promise<SidebarTeams> {
   ])
 
   return { managedTeams, joinedTeams }
+}
+
+export async function deleteTeam(teamId: string): Promise<TeamDeletionResult> {
+  const { data, error } = await supabase.from('teams').delete().eq('id', teamId).select('id,name').maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  if (!data) {
+    throw new Error('팀을 삭제할 수 없습니다. 권한을 확인하거나 잠시 후 다시 시도해 주세요.')
+  }
+
+  const deletedTeam = data as Record<string, unknown>
+  notifyTeamsUpdated()
+
+  return {
+    id: String(deletedTeam.id ?? ''),
+    name: String(deletedTeam.name ?? ''),
+  }
+}
+
+export async function fetchManagedTeamSummaries(userId: string): Promise<TeamSummary[]> {
+  const membershipsResult = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', userId)
+    .eq('role', 'leader')
+    .eq('status', 'active')
+    .order('joined_at', { ascending: false })
+
+  if (membershipsResult.error) {
+    throw membershipsResult.error
+  }
+
+  const orderedTeamIds = ((membershipsResult.data ?? []) as Array<Record<string, unknown>>)
+    .map((membership) => String(membership.team_id ?? ''))
+    .filter(Boolean)
+
+  if (orderedTeamIds.length === 0) {
+    return []
+  }
+
+  const [teamsResult, membersResult] = await Promise.all([
+    supabase
+      .from('teams')
+      .select('id,name,summary,is_recruiting,created_at')
+      .in('id', orderedTeamIds)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('team_members')
+      .select('id,team_id,user_id,role,status,joined_at')
+      .in('team_id', orderedTeamIds)
+      .eq('status', 'active'),
+  ])
+
+  if (teamsResult.error) {
+    throw teamsResult.error
+  }
+
+  if (membersResult.error) {
+    throw membersResult.error
+  }
+
+  const members = ((membersResult.data ?? []) as unknown[]).map(toTeamMemberRecord)
+  const profileIds = Array.from(new Set(members.map((member) => member.user_id))).filter(Boolean)
+  const profilesResult =
+    profileIds.length > 0
+      ? await supabase.from('profiles').select('id,full_name,email').in('id', profileIds)
+      : { data: [], error: null }
+
+  if (profilesResult.error) {
+    throw profilesResult.error
+  }
+
+  const nameByProfileId = new Map<string, string>(
+    ((profilesResult.data ?? []) as Array<Record<string, unknown>>).map((profile) => [
+      String(profile.id ?? ''),
+      typeof profile.full_name === 'string'
+        ? profile.full_name
+        : typeof profile.email === 'string'
+          ? profile.email
+          : '멤버',
+    ]),
+  )
+
+  const membersByTeamId = new Map<string, TeamMember[]>()
+  members.forEach((member) => {
+    const teamMembers = membersByTeamId.get(member.team_id) ?? []
+    teamMembers.push({
+      id: member.id,
+      name: nameByProfileId.get(member.user_id) ?? '멤버',
+      role: member.role,
+      availability: toManagementAvailability(member.role),
+    })
+    membersByTeamId.set(member.team_id, teamMembers)
+  })
+
+  const teamSummaryById = new Map<string, TeamSummary>(
+    ((teamsResult.data ?? []) as Array<Record<string, unknown>>).map((team) => {
+      const teamId = String(team.id ?? '')
+      return [
+        teamId,
+        {
+          id: teamId,
+          name: String(team.name ?? ''),
+          mission: typeof team.summary === 'string' ? team.summary : '팀 소개가 아직 없습니다.',
+          members: membersByTeamId.get(teamId) ?? [],
+          status: toManagementTeamStatus(Boolean(team.is_recruiting)),
+          velocity: membersByTeamId.get(teamId)?.length ?? 0,
+          lastUpdated: typeof team.created_at === 'string' ? team.created_at : new Date().toISOString(),
+        },
+      ]
+    }),
+  )
+
+  return orderedTeamIds
+    .map((teamId) => teamSummaryById.get(teamId))
+    .filter((team): team is TeamSummary => Boolean(team))
+}
+
+export function notifyTeamsUpdated() {
+  window.dispatchEvent(new CustomEvent(teamsUpdatedEvent))
+}
+
+export function subscribeTeamsUpdated(listener: () => void) {
+  window.addEventListener(teamsUpdatedEvent, listener)
+  return () => {
+    window.removeEventListener(teamsUpdatedEvent, listener)
+  }
 }
 
 export async function updateTeamProfile(params: {
@@ -842,7 +1066,3 @@ export async function updateTeamProfile(params: {
     skills: normalizedSkillIds.length > 0 ? await fetchTeamSkillTags(teamId) : [],
   }
 }
-
-
-
-

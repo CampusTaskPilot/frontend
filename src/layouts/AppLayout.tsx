@@ -7,9 +7,9 @@ export function AppLayout() {
   return (
     <div className="app-shell grid min-h-screen grid-rows-[auto,1fr]">
       <Navbar />
-      <div className="mx-auto grid min-h-0 w-full max-w-screen-2xl grid-cols-1 lg:grid-cols-[280px,minmax(0,1fr)] xl:px-4">
+      <div className="mx-auto grid w-full max-w-screen-2xl grid-cols-1 lg:grid-cols-[280px,minmax(0,1fr)] xl:px-4">
         <AppSidebar />
-        <main className="min-h-0 overflow-y-auto py-5 sm:py-6 lg:px-4 lg:py-8 xl:py-10">
+        <main className="min-w-0 py-5 sm:py-6 lg:px-4 lg:py-8 xl:py-10">
           <PageContainer className="page-shell" size="wide">
             <Outlet />
           </PageContainer>

@@ -4,6 +4,7 @@ import { SkillSelector } from '../components/common/SkillSelector'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { InputField } from '../components/ui/InputField'
+import { useImeSafeSubmit } from '../hooks/useImeSafeSubmit'
 import { useAuth } from '../features/auth/context/useAuth'
 import { DeleteAccountModal } from '../features/profile/components/DeleteAccountModal'
 import {
@@ -49,6 +50,7 @@ const emptyForm: EditableProfileForm = {
 }
 
 export function ProfileEditPage() {
+  const ime = useImeSafeSubmit()
   const navigate = useNavigate()
   const location = useLocation()
   const { userId } = useParams<{ userId: string }>()
@@ -73,6 +75,11 @@ export function ProfileEditPage() {
 
   const isBrowserUnloadRef = useRef(false)
   const hasInitialFormRef = useRef(false)
+  const imeInputProps = {
+    onCompositionStart: ime.handleCompositionStart,
+    onCompositionEnd: ime.handleCompositionEnd,
+    onKeyDown: ime.preventEnterWhileComposing<HTMLInputElement>(),
+  }
 
   function markDirty() {
     setIsDirty(true)
@@ -454,32 +461,38 @@ export function ProfileEditPage() {
                 label="이름"
                 value={form.full_name}
                 onChange={(event) => updateForm('full_name', event.target.value)}
+                {...imeInputProps}
               />
               <InputField
                 label="자기소개"
                 value={form.bio}
                 onChange={(event) => updateForm('bio', event.target.value)}
                 className="md:col-span-2"
+                {...imeInputProps}
               />
               <InputField
                 label="지역"
                 value={form.location}
                 onChange={(event) => updateForm('location', event.target.value)}
+                {...imeInputProps}
               />
               <InputField
                 label="대학교"
                 value={form.university}
                 onChange={(event) => updateForm('university', event.target.value)}
+                {...imeInputProps}
               />
               <InputField
                 label="전공"
                 value={form.major}
                 onChange={(event) => updateForm('major', event.target.value)}
+                {...imeInputProps}
               />
               <InputField
                 label="학년"
                 value={form.grade}
                 onChange={(event) => updateForm('grade', event.target.value)}
+                {...imeInputProps}
               />
             </div>
           </Card>
@@ -497,18 +510,21 @@ export function ProfileEditPage() {
               value={form.github_url}
               onChange={(event) => updateForm('github_url', event.target.value)}
               placeholder="https://github.com/username"
+              {...imeInputProps}
             />
             <InputField
               label="블로그 주소"
               value={form.blog_url}
               onChange={(event) => updateForm('blog_url', event.target.value)}
               placeholder="https://blog.example.com"
+              {...imeInputProps}
             />
             <InputField
               label="포트폴리오 주소"
               value={form.portfolio_url}
               onChange={(event) => updateForm('portfolio_url', event.target.value)}
               placeholder="https://portfolio.example.com"
+              {...imeInputProps}
             />
           </div>
         </Card>
@@ -578,7 +594,12 @@ export function ProfileEditPage() {
               <h2 className="font-display text-2xl text-campus-900">변경 사항 저장</h2>
               <p className="text-sm text-campus-600">수정한 프로필 정보와 스킬을 저장합니다.</p>
             </div>
-            <Button type="button" onClick={() => void handleSaveProfile()} disabled={isSaving}>
+            <Button
+              type="button"
+              onMouseDown={ime.preventBlurOnMouseDown}
+              onClick={() => void ime.runImeSafeAction(handleSaveProfile)}
+              disabled={isSaving}
+            >
               {isSaving ? '저장 중...' : '저장하기'}
             </Button>
           </div>

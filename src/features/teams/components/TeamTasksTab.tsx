@@ -1,7 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { useId, type MouseEvent as ReactMouseEvent } from 'react'
 import { Card } from '../../../components/ui/Card'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { cn } from '../../../lib/cn'
 import { supabase } from '../../../lib/supabase'
 import {
@@ -442,6 +443,7 @@ function ModalFrame({
 }
 
 export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }: TeamTasksTabProps) {
+  const ime = useImeSafeSubmit()
   const [serverTasks, setServerTasks] = useState<TeamTaskWithTodos[]>([])
   const [draftTasks, setDraftTasks] = useState<TeamTaskWithTodos[]>([])
   const [pendingChanges, setPendingChanges] = useState<PendingWorkspaceChanges>(() => emptyPendingChanges())
@@ -1545,9 +1547,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     })
   }, [activeView, currentUserId, displayAssigneeName, searchKeyword, showMineOnly, sortBy, tasks])
 
-  async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function handleCreateTask() {
     if (!isLeader) {
       setErrorMessage('Task 생성은 팀 관리자만 할 수 있습니다.')
       return
@@ -2443,7 +2443,11 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           onClose={closeTaskModal}
           closeOnEscape={!isCreatingTask && !isDeletingTask}
         >
-          <form className="grid gap-4 px-6 py-6 sm:px-8 lg:grid-cols-2" onSubmit={handleCreateTask}>
+          <form
+            className="grid gap-4 px-6 py-6 sm:px-8 lg:grid-cols-2"
+            onSubmit={ime.createSubmitHandler(handleCreateTask)}
+            noValidate
+          >
             <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2">
               <TaskMetaBadge tone="neutral">{isEditing ? '관리자 수정 모드' : '새 Task 초안'}</TaskMetaBadge>
               <p className="text-xs text-campus-500">
@@ -2456,6 +2460,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               <input
                 value={taskTitle}
                 onChange={(event) => setTaskTitle(event.target.value.slice(0, 15))}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 maxLength={15}
                 placeholder="예: 발표 자료 구조 정리"
                 className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
@@ -2484,6 +2491,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               <textarea
                 value={taskDescription}
                 onChange={(event) => setTaskDescription(event.target.value.slice(0, 100))}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 maxLength={100}
                 rows={4}
                 placeholder="과제 범위, 기대 결과물, 참고할 내용을 적어두면 팀원이 빠르게 이해할 수 있습니다."
@@ -2541,6 +2551,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 type="button"
                 variant="ghost"
                 className={stableGhostButtonClass}
+                onMouseDown={ime.preventBlurOnMouseDown}
                 onClick={closeTaskModal}
                 disabled={isCreatingTask || isDeletingTask}
               >
@@ -2551,13 +2562,14 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   type="button"
                   variant="ghost"
                   className="border-rose-200 text-rose-600 hover:bg-rose-50 focus-visible:outline-rose-300"
+                  onMouseDown={ime.preventBlurOnMouseDown}
                   onClick={() => handleDeleteTaskRequest([editingTaskId])}
                   disabled={isDeletingTask || isCreatingTask}
                 >
                   {isDeletingTask ? '삭제 중...' : 'Task 삭제'}
                 </Button>
               )}
-              <Button type="submit" disabled={isCreatingTask}>
+              <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={isCreatingTask}>
                 {isCreatingTask ? (isEditing ? '수정 중...' : '생성 중...') : isEditing ? 'Task 수정 저장' : 'Task 생성'}
               </Button>
             </div>
@@ -3207,3 +3219,4 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     </div>
   )
 }
+

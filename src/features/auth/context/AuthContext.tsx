@@ -13,34 +13,56 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     let isMounted = true
+    let hasResolvedInitialSession = false
 
-    const initializeSession = async () => {
-      const { data, error } = await supabase.auth.getSession()
-
+    const resolveSession = (nextSession: Session | null) => {
       if (!isMounted) {
         return
       }
 
-      if (error) {
-        console.error('Failed to load session', error)
-      }
-
-      setSession(data.session)
+      hasResolvedInitialSession = true
+      setSession(nextSession)
       setIsLoading(false)
     }
 
-    void initializeSession()
-
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!isMounted) {
         return
       }
 
       setSession(nextSession)
-      setIsLoading(false)
+
+      if (event === 'INITIAL_SESSION') {
+        hasResolvedInitialSession = true
+        setIsLoading(false)
+      }
     })
+
+    const initializeSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error('Failed to load session', error)
+        }
+
+        if (hasResolvedInitialSession) {
+          return
+        }
+
+        resolveSession(data.session)
+      } catch (error) {
+        console.error('Failed to initialize auth session', error)
+
+        if (!hasResolvedInitialSession) {
+          resolveSession(null)
+        }
+      }
+    }
+
+    void initializeSession()
 
     return () => {
       isMounted = false

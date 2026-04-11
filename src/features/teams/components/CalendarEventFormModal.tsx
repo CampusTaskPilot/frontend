@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { cn } from '../../../lib/cn'
 import {
   createEmptyCalendarEventFormValues,
@@ -39,13 +40,13 @@ export function CalendarEventFormModal({
   const [values, setValues] = useState<TeamCalendarEventFormValues>(
     () => (open ? toCalendarEventFormValues(event) : createEmptyCalendarEventFormValues()),
   )
+  const ime = useImeSafeSubmit()
 
   if (!open) {
     return null
   }
 
-  async function handleSubmit(eventObject: FormEvent<HTMLFormElement>) {
-    eventObject.preventDefault()
+  async function handleSubmit() {
     await onSubmit(values)
   }
 
@@ -66,13 +67,20 @@ export function CalendarEventFormModal({
               </p>
             </div>
 
-            <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onMouseDown={ime.preventBlurOnMouseDown}
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
               닫기
             </Button>
           </div>
         </div>
 
-        <form className="space-y-5 px-6 py-6 sm:px-8" onSubmit={handleSubmit}>
+        <form className="space-y-5 px-6 py-6 sm:px-8" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
           <label className="space-y-2 text-sm font-medium text-campus-700">
             <span>제목</span>
             <input
@@ -80,6 +88,9 @@ export function CalendarEventFormModal({
               onChange={(eventObject) =>
                 setValues((current) => ({ ...current, title: eventObject.target.value }))
               }
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               placeholder="예: 주간 스탠드업"
               className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
               disabled={isSubmitting}
@@ -93,6 +104,9 @@ export function CalendarEventFormModal({
               onChange={(eventObject) =>
                 setValues((current) => ({ ...current, description: eventObject.target.value }))
               }
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               placeholder="없으면 비워도 괜찮습니다."
               rows={4}
               className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
@@ -196,10 +210,16 @@ export function CalendarEventFormModal({
           )}
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
+            <Button
+              type="button"
+              variant="ghost"
+              onMouseDown={ime.preventBlurOnMouseDown}
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
               취소
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={isSubmitting}>
               {isSubmitting ? '저장 중...' : event ? '수정 저장' : '일정 저장'}
             </Button>
           </div>

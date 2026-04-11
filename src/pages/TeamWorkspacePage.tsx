@@ -11,7 +11,7 @@ import { TeamPMTab, type PMAssistantTabKey } from '../features/teams/components/
 import { TeamTabs, type TeamWorkspaceTabKey } from '../features/teams/components/TeamTabs'
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
 import { TeamMemberManagementApiError, removeTeamMember } from '../features/teams/lib/teamMemberManagement'
-import { fetchTeamMembers, fetchTeamSkillTags, fetchTeamWorkspaceBase } from '../features/teams/lib/teams'
+import { deleteTeam, fetchTeamMembers, fetchTeamSkillTags, fetchTeamWorkspaceBase } from '../features/teams/lib/teams'
 import type {
   TeamMemberRole,
   TeamMemberWithProfile,
@@ -87,6 +87,8 @@ export function TeamWorkspacePage() {
   const [memberActionSuccess, setMemberActionSuccess] = useState('')
   const [memberActionError, setMemberActionError] = useState('')
   const [pendingMemberId, setPendingMemberId] = useState<string | null>(null)
+  const [isDeletingTeam, setIsDeletingTeam] = useState(false)
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState('')
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -107,6 +109,8 @@ export function TeamWorkspacePage() {
       setBaseError('')
       setMemberActionSuccess('')
       setMemberActionError('')
+      setDeleteErrorMessage('')
+      setIsDeletingTeam(false)
       setPendingMemberId(null)
       setMembers([])
       setSkills([])
@@ -267,6 +271,49 @@ export function TeamWorkspacePage() {
     }
   }
 
+  async function handleDeleteTeam() {
+    if (!teamId) {
+      setDeleteErrorMessage('팀 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    if (!isLeader) {
+      setDeleteErrorMessage('팀 리더만 삭제할 수 있습니다.')
+      return
+    }
+
+    if (isDeletingTeam) {
+      return
+    }
+
+    setIsDeletingTeam(true)
+    setDeleteErrorMessage('')
+
+    try {
+      const deleted = await deleteTeam(teamId)
+
+      setBaseData(null)
+      setMembers([])
+      setSkills([])
+      setMembersLoaded(false)
+      setSkillsLoaded(false)
+      setActiveTab('overview')
+
+      navigate('/teams', {
+        replace: true,
+        state: {
+          feedbackMessage: `${deleted.name} 팀이 삭제되었습니다.`,
+        },
+      })
+    } catch (error) {
+      setDeleteErrorMessage(
+        error instanceof Error ? error.message : '팀 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+      )
+    } finally {
+      setIsDeletingTeam(false)
+    }
+  }
+
   function openPMAssistantTab(tab: PMAssistantTabKey) {
     if (!teamId) return
     setActiveTab('pm')
@@ -325,7 +372,7 @@ export function TeamWorkspacePage() {
       )}
 
       <div className="grid items-start gap-5 2xl:grid-cols-[260px,minmax(0,1fr)]">
-        <Card className="h-fit xl:sticky xl:top-8">
+        <Card className="h-fit 2xl:sticky 2xl:top-[calc(var(--app-header-height)+1.5rem)] 2xl:self-start">
           <TeamTabs activeTab={activeTab} onChange={setActiveTab} />
         </Card>
 
@@ -353,7 +400,10 @@ export function TeamWorkspacePage() {
                   errorMessage={tabError}
                   isLeader={Boolean(isLeader)}
                   currentUserId={user?.id ?? null}
+                  isDeletingTeam={isDeletingTeam}
+                  deleteErrorMessage={deleteErrorMessage}
                   onOpenMembers={() => openWorkspaceTab('members')}
+                  onDeleteTeam={handleDeleteTeam}
                   onTeamUpdated={({ team, skills: nextSkills }) => {
                     setBaseData((prev) => (prev ? { ...prev, team, skills: nextSkills } : prev))
                     setSkills(nextSkills)

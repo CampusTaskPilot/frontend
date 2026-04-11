@@ -55,12 +55,12 @@ export function CalendarEventCard({
   return (
     <Card
       className={cn(
-        'flex h-full flex-col justify-between space-y-4 border-campus-200 bg-white/90 p-5 shadow-sm',
+        'border-campus-200 bg-white/90 p-4 shadow-sm',
         isSelected && 'border-rose-200 ring-1 ring-rose-100',
       )}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             {isLeader && isSelectionMode && (
               <label className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
@@ -74,6 +74,7 @@ export function CalendarEventCard({
                 선택
               </label>
             )}
+
             <span
               className={cn(
                 'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset',
@@ -82,21 +83,24 @@ export function CalendarEventCard({
             >
               {typeLabelMap[event.type]}
             </span>
+
             <span className="inline-flex items-center rounded-full bg-campus-50 px-3 py-1 text-xs font-medium text-campus-600 ring-1 ring-inset ring-campus-200">
               {formatTimeRange(event)}
             </span>
           </div>
 
           <div className="space-y-1">
-            <h4 className="line-clamp-2 font-display text-lg text-campus-900 sm:text-xl">{event.title}</h4>
-            <p className="line-clamp-3 text-sm leading-6 text-campus-600">
-              {event.description?.trim() || '설명이 아직 없습니다. 간단한 맥락을 적어두면 팀원들이 일정을 더 빨리 이해할 수 있습니다.'}
+            <h4 className="line-clamp-1 text-base font-semibold text-campus-900 sm:text-lg">
+              {event.title}
+            </h4>
+            <p className="line-clamp-2 text-sm leading-6 text-campus-600">
+              {event.description?.trim() || '설명이 없는 일정입니다.'}
             </p>
           </div>
         </div>
 
-        {isLeader && (
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        {isLeader ? (
+          <div className="flex shrink-0 items-center gap-2 md:pl-4">
             <Button type="button" size="sm" variant="ghost" onClick={() => onEdit(event)}>
               수정
             </Button>
@@ -111,7 +115,7 @@ export function CalendarEventCard({
               삭제
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
     </Card>
   )

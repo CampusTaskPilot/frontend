@@ -35,11 +35,11 @@ export function CalendarEventList({
       {groups.map((group) => (
         <section key={group.date} className="space-y-4">
           <div className="flex items-center gap-3">
-            <h3 className="font-display text-2xl text-campus-900">{formatDateHeading(group.date)}</h3>
+            <h3 className="text-xl font-semibold text-campus-900">{formatDateHeading(group.date)}</h3>
             <div className="h-px flex-1 bg-campus-200" />
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-3">
             {group.events.map((event) => (
               <CalendarEventCard
                 key={event.id}

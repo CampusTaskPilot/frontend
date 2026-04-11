@@ -1,7 +1,8 @@
-import { type FormEvent, useState } from 'react'
+﻿import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../../../components/ui/Button'
 import { InputField } from '../../../components/ui/InputField'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { useSupabaseAuth } from '../hooks/useSupabaseAuth'
 
 interface RedirectState {
@@ -12,6 +13,7 @@ interface RedirectState {
 
 export function LoginForm() {
   const { signInWithPassword } = useSupabaseAuth()
+  const ime = useImeSafeSubmit()
   const navigate = useNavigate()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -21,8 +23,7 @@ export function LoginForm() {
 
   const redirectTo = (location.state as RedirectState | null)?.from?.pathname ?? '/dashboard'
 
-  async function handlePasswordLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handlePasswordLogin() {
     setStatus('loading')
     setMessage('')
 
@@ -38,7 +39,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-5" onSubmit={handlePasswordLogin}>
+    <form className="space-y-5" onSubmit={ime.createSubmitHandler(handlePasswordLogin)} noValidate>
       <InputField
         label="이메일"
         id="email"
@@ -46,6 +47,9 @@ export function LoginForm() {
         value={email}
         placeholder="you@example.com"
         onChange={(event) => setEmail(event.target.value)}
+        onCompositionStart={ime.handleCompositionStart}
+        onCompositionEnd={ime.handleCompositionEnd}
+        onKeyDown={ime.preventEnterWhileComposing()}
         required
       />
 
@@ -56,11 +60,14 @@ export function LoginForm() {
         value={password}
         placeholder="비밀번호를 입력하세요"
         onChange={(event) => setPassword(event.target.value)}
+        onCompositionStart={ime.handleCompositionStart}
+        onCompositionEnd={ime.handleCompositionEnd}
+        onKeyDown={ime.preventEnterWhileComposing()}
         required
       />
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={!email || !password || status === 'loading'}>
+        <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={!email || !password || status === 'loading'}>
           {status === 'loading' ? '로그인 중...' : '로그인'}
         </Button>
       </div>
@@ -73,3 +80,4 @@ export function LoginForm() {
     </form>
   )
 }
+

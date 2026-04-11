@@ -79,6 +79,11 @@ export interface TeamWorkspaceBase {
   skills: TeamSkillTag[]
 }
 
+export interface TeamDeletionResult {
+  id: string
+  name: string
+}
+
 export type TeamMemberRemovalAction = 'removed' | 'left'
 
 export interface TeamMemberRemovalResponse {

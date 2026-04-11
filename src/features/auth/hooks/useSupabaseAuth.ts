@@ -6,6 +6,10 @@ interface Credentials {
   password: string
 }
 
+interface SignUpCredentials extends Credentials {
+  name?: string
+}
+
 export function useSupabaseAuth() {
   const signInWithPassword = useCallback(async ({ email, password }: Credentials) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -15,12 +19,20 @@ export function useSupabaseAuth() {
     }
   }, [])
 
-  const signUpWithPassword = useCallback(async ({ email, password }: Credentials) => {
+  const signUpWithPassword = useCallback(async ({ email, password, name }: SignUpCredentials) => {
+    const trimmedName = name?.trim()
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
+        data: trimmedName
+          ? {
+              full_name: trimmedName,
+              display_name: trimmedName,
+            }
+          : undefined,
       },
     })
 

@@ -1,9 +1,10 @@
-﻿import { type FormEvent, useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/common/Navbar'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { InputField } from '../components/ui/InputField'
+import { useImeSafeSubmit } from '../hooks/useImeSafeSubmit'
 import { useSupabaseAuth } from '../features/auth/hooks/useSupabaseAuth'
 import { supabase } from '../lib/supabase'
 
@@ -39,6 +40,7 @@ function getSignupErrorMessage(error: unknown) {
 export function SignupPage() {
   const { signUpWithPassword } = useSupabaseAuth()
   const navigate = useNavigate()
+  const ime = useImeSafeSubmit()
   const [name, setName] = useState('')
   const [workspace, setWorkspace] = useState('')
   const [email, setEmail] = useState('')
@@ -46,8 +48,7 @@ export function SignupPage() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit() {
     setStatus('loading')
     setMessage('')
 
@@ -112,13 +113,16 @@ export function SignupPage() {
               </p>
             </div>
 
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
               <InputField
                 label="이름"
                 id="name"
                 value={name}
                 placeholder="이름을 입력해 주세요"
                 onChange={(event) => setName(event.target.value)}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 required
               />
               <InputField
@@ -128,6 +132,9 @@ export function SignupPage() {
                 value={email}
                 placeholder="you@example.com"
                 onChange={(event) => setEmail(event.target.value)}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 required
               />
               <InputField
@@ -136,6 +143,9 @@ export function SignupPage() {
                 value={workspace}
                 placeholder="예: TaskPilot Team"
                 onChange={(event) => setWorkspace(event.target.value)}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 required
               />
               <InputField
@@ -145,11 +155,15 @@ export function SignupPage() {
                 value={password}
                 placeholder="8자 이상 입력해 주세요"
                 onChange={(event) => setPassword(event.target.value)}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 required
                 minLength={8}
               />
               <Button
                 type="submit"
+                onMouseDown={ime.preventBlurOnMouseDown}
                 className="w-full py-3 text-base"
                 disabled={!name || !workspace || !email || !password || status === 'loading'}
               >
@@ -202,3 +216,4 @@ export function SignupPage() {
     </div>
   )
 }
+

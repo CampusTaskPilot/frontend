@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { SkillSelector } from '../../../components/common/SkillSelector'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
@@ -162,6 +162,8 @@ export function TeamProfileHero({
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const isSummaryComposingRef = useRef(false)
+  const pendingSummaryValueRef = useRef(draft.summary)
 
   const sortedMembers = useMemo(() => {
     return [...members].sort((a, b) => {
@@ -194,6 +196,19 @@ export function TeamProfileHero({
   }, [isEditing, skills, team])
 
   useEffect(() => {
+    if (!isEditing) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isEditing])
+
+  useEffect(() => {
     return () => {
       if (imagePreviewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreviewUrl)
@@ -216,6 +231,28 @@ export function TeamProfileHero({
 
   function updateDraft<K extends keyof TeamProfileDraft>(key: K, value: TeamProfileDraft[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function handleSummaryChange(value: string) {
+    pendingSummaryValueRef.current = value
+    updateDraft('summary', value)
+  }
+
+  function handleSummaryCompositionStart() {
+    isSummaryComposingRef.current = true
+  }
+
+  function handleSummaryCompositionEnd(value: string) {
+    isSummaryComposingRef.current = false
+    pendingSummaryValueRef.current = value
+    setDraft((prev) => (prev.summary === value ? prev : { ...prev, summary: value }))
+  }
+
+  function flushSummaryComposition() {
+    if (!isSummaryComposingRef.current) return
+    isSummaryComposingRef.current = false
+    const value = pendingSummaryValueRef.current
+    setDraft((prev) => (prev.summary === value ? prev : { ...prev, summary: value }))
   }
 
   function openEditor() {
@@ -259,6 +296,7 @@ export function TeamProfileHero({
   }
 
   async function handleSave() {
+    flushSummaryComposition()
     if (!currentUserId) {
       setErrorMessage('로그인 후 저장할 수 있습니다.')
       return
@@ -488,7 +526,13 @@ export function TeamProfileHero({
                     팀 이미지, 소개, 분류, 모집 상태와 기술 스택을 한 번에 조정할 수 있습니다.
                   </p>
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => !isSaving && setIsEditing(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => !isSaving && setIsEditing(false)}
+                >
                   닫기
                 </Button>
               </div>
@@ -582,7 +626,8 @@ export function TeamProfileHero({
                   <InputField
                     label="최대 인원"
                     type="number"
-                    min={Math.max(members.length, 2)}
+                    inputMode="numeric"
+                    step={1}
                     value={draft.maxMembers}
                     onChange={(event) => updateDraft('maxMembers', event.target.value)}
                     disabled={isSaving}
@@ -605,7 +650,9 @@ export function TeamProfileHero({
                 <InputField
                   label="팀 소개"
                   value={draft.summary}
-                  onChange={(event) => updateDraft('summary', event.target.value)}
+                  onChange={(event) => handleSummaryChange(event.target.value)}
+                  onCompositionStart={handleSummaryCompositionStart}
+                  onCompositionEnd={(event) => handleSummaryCompositionEnd(event.currentTarget.value)}
                   placeholder="한 줄로 팀을 소개해주세요."
                   disabled={isSaving}
                 />
@@ -654,10 +701,21 @@ export function TeamProfileHero({
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2 border-t border-campus-200 pt-2">
-                  <Button type="button" variant="ghost" onClick={() => !isSaving && setIsEditing(false)} disabled={isSaving}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => !isSaving && setIsEditing(false)}
+                    disabled={isSaving}
+                  >
                     취소
                   </Button>
-                  <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
+                  <Button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void handleSave()}
+                    disabled={isSaving}
+                  >
                     {isSaving ? '저장 중...' : '저장'}
                   </Button>
                 </div>

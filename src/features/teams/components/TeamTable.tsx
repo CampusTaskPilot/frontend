@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import type { TeamSummary } from '../types/team'
@@ -8,12 +9,12 @@ interface TeamTableProps {
 
 const statusMap: Record<string, string> = {
   Active: '운영 중',
-  Paused: '휴면',
+  Paused: '일시중지',
 }
 
 const availabilityMap: Record<string, string> = {
   Focus: '집중',
-  'At capacity': '포화',
+  'At capacity': '가득 참',
   Out: '부재',
 }
 
@@ -23,13 +24,11 @@ export function TeamTable({ teams }: TeamTableProps) {
       <table className="w-full min-w-[780px] border-collapse text-sm">
         <thead className="bg-campus-50 text-left text-xs uppercase tracking-[0.2em] text-campus-500">
           <tr>
-            {['팀', '프로젝트 목표', '팀 속도', '상태', '구성원', '최근 업데이트', ''].map(
-              (header) => (
-                <th key={header} className="px-5 py-4">
-                  {header}
-                </th>
-              ),
-            )}
+            {['팀', '팀 소개', '팀 규모', '상태', '구성원', '최근 업데이트', ''].map((header) => (
+              <th key={header} className="px-5 py-4">
+                {header}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -41,7 +40,7 @@ export function TeamTable({ teams }: TeamTableProps) {
               </td>
               <td className="px-5 py-4 text-campus-700">{team.mission}</td>
               <td className="px-5 py-4">
-                <Badge variant="neutral">{team.velocity} pt</Badge>
+                <Badge variant="neutral">{team.velocity}명</Badge>
               </td>
               <td className="px-5 py-4">
                 <Badge variant={team.status === 'Active' ? 'success' : 'warning'}>
@@ -69,8 +68,8 @@ export function TeamTable({ teams }: TeamTableProps) {
                 {new Date(team.lastUpdated).toLocaleDateString('ko-KR')}
               </td>
               <td className="px-5 py-4 text-right">
-                <Button variant="ghost" size="sm">
-                  팀 보기
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to={`/teams/${team.id}`}>팀 보기</Link>
                 </Button>
               </td>
             </tr>

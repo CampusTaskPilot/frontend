@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 
 interface DiagnoseMessage {
   id: number
@@ -20,10 +21,9 @@ const INITIAL_MESSAGES: DiagnoseMessage[] = [
 export function DiagnoseTab() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<DiagnoseMessage[]>(INITIAL_MESSAGES)
+  const ime = useImeSafeSubmit()
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  function handleSubmit() {
     const trimmed = input.trim()
     if (!trimmed) {
       return
@@ -47,7 +47,7 @@ export function DiagnoseTab() {
       <div className="space-y-1">
         <h2 className="font-display text-2xl text-campus-900">문제 진단</h2>
         <p className="text-sm text-campus-600">
-          채팅 기반으로 이슈를 정리하고, 추후 실행 액션으로 연결될 수 있도록 분리된 인터페이스입니다.
+          채팅 기반으로 이슈를 정리하고, 추후 실행 액션으로 연결할 수 있도록 분리한 인터페이스입니다.
         </p>
       </div>
 
@@ -57,9 +57,7 @@ export function DiagnoseTab() {
             key={message.id}
             className={[
               'max-w-3xl rounded-2xl px-4 py-3 text-sm',
-              message.role === 'assistant'
-                ? 'bg-white text-campus-800'
-                : 'ml-auto bg-brand-50 text-brand-700',
+              message.role === 'assistant' ? 'bg-white text-campus-800' : 'ml-auto bg-brand-50 text-brand-700',
             ].join(' ')}
           >
             {message.content}
@@ -67,16 +65,21 @@ export function DiagnoseTab() {
         ))}
       </div>
 
-      <form className="space-y-3" onSubmit={handleSubmit}>
+      <form className="space-y-3" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          onCompositionStart={ime.handleCompositionStart}
+          onCompositionEnd={ime.handleCompositionEnd}
+          onKeyDown={ime.preventEnterWhileComposing()}
           rows={4}
           className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
-          placeholder="현재 문제 상황, 막힌 지점, 기대하는 도움을 입력해 주세요."
+          placeholder="현재 문제 상황, 막힘 지점, 기대하는 지원 내용을 입력해 주세요."
         />
         <div className="flex justify-end">
-          <Button type="submit">진단 시작</Button>
+          <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown}>
+            진단 시작
+          </Button>
         </div>
       </form>
     </Card>

@@ -1,3 +1,5 @@
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { cn } from '../../../lib/cn'
 import { TeamOverviewHeader } from './TeamOverviewHeader'
@@ -21,7 +23,10 @@ interface TeamOverviewTabProps {
   errorMessage: string
   isLeader: boolean
   currentUserId: string | null
+  isDeletingTeam: boolean
+  deleteErrorMessage: string
   onOpenMembers: () => void
+  onDeleteTeam: () => Promise<void>
   onTeamUpdated: (payload: { team: TeamRecord; skills: TeamSkillTag[] }) => void
 }
 
@@ -94,6 +99,156 @@ function PulseItem({
   )
 }
 
+function TeamDeleteConfirmModal({
+  open,
+  teamName,
+  isSubmitting,
+  errorMessage,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  teamName: string
+  isSubmitting: boolean
+  errorMessage: string
+  onClose: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [confirmationName, setConfirmationName] = useState('')
+
+  const isMatched = useMemo(
+    () => confirmationName.trim() === teamName.trim(),
+    [confirmationName, teamName],
+  )
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const focusTimer = window.setTimeout(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }, 0)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSubmitting) {
+        event.preventDefault()
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.clearTimeout(focusTimer)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isSubmitting, onClose, open])
+
+  if (!open) {
+    return null
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-campus-900/60 px-4 py-6 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSubmitting) {
+          onClose()
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="w-full max-w-lg"
+      >
+        <Card className="space-y-5 rounded-[2rem] border-rose-300 bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-rose-600">Danger Zone</p>
+              <h3 id={titleId} className="font-display text-2xl text-campus-900">
+                팀을 영구 삭제하시겠습니까?
+              </h3>
+              <div id={descriptionId} className="space-y-2 text-sm leading-6 text-campus-600">
+                <p>이 작업은 되돌릴 수 없습니다.</p>
+                <p>삭제가 완료되면 현재 워크스페이스에 다시 들어올 수 없으며, 관련 핵심 데이터도 함께 제거될 수 있습니다.</p>
+                <p>로그는 현재 DB 정책에 맞게 처리되며, 프론트는 팀 삭제 요청만 수행합니다.</p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              disabled={isSubmitting}
+              aria-label="팀 삭제 모달 닫기"
+              className="shrink-0 px-3"
+            >
+              닫기
+            </Button>
+          </div>
+
+          <div className="rounded-2xl border border-rose-300 bg-rose-100 px-4 py-4 text-sm text-rose-800">
+            <p className="font-semibold">
+              주의: 팀 정보, 멤버 연결, 업무, 할 일, 일정 등 핵심 데이터가 즉시 영향을 받을 수 있습니다.
+            </p>
+            <p className="mt-2 font-medium">
+              실수 방지를 위해 현재 팀 이름을 정확히 입력해야만 삭제를 진행할 수 있습니다.
+            </p>
+            <p className="mt-2 break-all">
+              확인 문자열: <span className="font-semibold">{teamName}</span>
+            </p>
+          </div>
+
+          <label className="block space-y-2 text-sm font-medium text-campus-700">
+            <span>팀 이름 확인</span>
+            <input
+              ref={inputRef}
+              value={confirmationName}
+              onChange={(event) => setConfirmationName(event.target.value)}
+              placeholder={teamName}
+              disabled={isSubmitting}
+              aria-invalid={Boolean(confirmationName) && !isMatched}
+              className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-rose-300 focus:ring-2 focus:ring-rose-100 disabled:cursor-not-allowed disabled:bg-campus-50"
+            />
+          </label>
+
+          <p className="text-xs leading-5 text-campus-500">
+            앞뒤 공백은 자동으로 제외되며, 대소문자까지 현재 팀 이름과 정확히 일치해야 삭제 버튼이 활성화됩니다.
+          </p>
+
+          {errorMessage && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+              {errorMessage}
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
+              취소
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void onConfirm()}
+              disabled={!isMatched || isSubmitting}
+              className="bg-rose-500 text-white shadow-none hover:bg-rose-600 focus-visible:outline-rose-300"
+            >
+              {isSubmitting ? '삭제 중...' : '팀 영구 삭제'}
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
 export function TeamOverviewTab({
   team,
   leader,
@@ -104,9 +259,15 @@ export function TeamOverviewTab({
   errorMessage,
   isLeader,
   currentUserId,
+  isDeletingTeam,
+  deleteErrorMessage,
   onOpenMembers,
+  onDeleteTeam,
   onTeamUpdated,
 }: TeamOverviewTabProps) {
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [editRequestKey, setEditRequestKey] = useState(0)
+
   if (isLoading) {
     return <OverviewSkeleton />
   }
@@ -122,105 +283,131 @@ export function TeamOverviewTab({
   }
 
   return (
-    <div className="space-y-6">
-      <TeamOverviewHeader
-        team={team}
-        leader={leader}
-        members={members}
-        skills={skills}
-        isLeader={isLeader}
-        currentUserId={currentUserId}
-        tasks={tasks}
-        onOpenMembers={onOpenMembers}
-        onTeamUpdated={onTeamUpdated}
-      />
+    <>
+      <div className="space-y-6">
+        <TeamOverviewHeader
+          team={team}
+          leader={leader}
+          members={members}
+          skills={skills}
+          isLeader={isLeader}
+          currentUserId={currentUserId}
+          tasks={tasks}
+          editRequestKey={editRequestKey}
+          onOpenMembers={onOpenMembers}
+          onTeamUpdated={onTeamUpdated}
+        />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),320px]">
-        <div className="space-y-6">
-          <TeamOverviewSkills skills={skills} />
-          <TeamOverviewMembers members={members} team={team} />
-        </div>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),320px]">
+          <div className="space-y-6">
+            <TeamOverviewSkills skills={skills} />
+            <TeamOverviewMembers members={members} team={team} />
+          </div>
 
-        <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
-          <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
-                  Workspace Actions
-                </p>
-                <h2 className="text-xl font-semibold tracking-tight text-campus-900">빠르게 이동하고 관리하기</h2>
-                <p className="text-sm leading-6 text-campus-500">
-                  현재 팀 상태를 확인하면서 자주 쓰는 관리 동작으로 바로 이어질 수 있게 정리했습니다.
-                </p>
-              </div>
+          <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+            <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
+                    Workspace Actions
+                  </p>
+                  <h2 className="text-xl font-semibold tracking-tight text-campus-900">빠르게 이동하고 관리하기</h2>
+                  <p className="text-sm leading-6 text-campus-500">
+                    현재 팀 상태를 확인하면서 자주 쓰는 관리 작업으로 바로 이어질 수 있게 정리했습니다.
+                  </p>
+                </div>
 
-              <div className="flex flex-col gap-3">
-                {isLeader && (
+                <div className="flex flex-col gap-3">
+                  {isLeader && (
+                    <button
+                      type="button"
+                      onClick={() => setEditRequestKey((current) => current + 1)}
+                      className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-brand-500 via-brand-400 to-accent-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:brightness-105"
+                    >
+                      팀 정보 수정
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => {
-                      const editButton = document.querySelector<HTMLButtonElement>(
-                        '[data-team-edit-trigger="true"]',
-                      )
-                      editButton?.click()
-                    }}
-                    className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-brand-500 via-brand-400 to-accent-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:brightness-105"
+                    onClick={onOpenMembers}
+                    className="inline-flex w-full items-center justify-center rounded-full border border-campus-200 bg-white px-5 py-3 text-sm font-semibold text-campus-700 transition hover:border-campus-300 hover:bg-campus-50"
                   >
-                    팀 정보 수정
+                    멤버 관리 보기
                   </button>
+                  {isLeader && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteModalOpen(true)}
+                      disabled={isDeletingTeam}
+                      className="inline-flex w-full items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isDeletingTeam ? '삭제 중...' : '팀 삭제'}
+                    </button>
+                  )}
+                </div>
+
+                {deleteErrorMessage && !isDeleteModalOpen && (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                    {deleteErrorMessage}
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={onOpenMembers}
-                  className="inline-flex w-full items-center justify-center rounded-full border border-campus-200 bg-white px-5 py-3 text-sm font-semibold text-campus-700 transition hover:border-campus-300 hover:bg-campus-50"
-                >
-                  멤버 관리 보기
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  title="현재 팀 삭제 기능은 아직 연결되어 있지 않습니다."
-                  className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-full border border-campus-200 bg-campus-50 px-5 py-3 text-sm font-semibold text-campus-500"
-                >
-                  팀 삭제 준비 중
-                </button>
               </div>
-            </div>
-          </Card>
+            </Card>
 
-          <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
-                  Workspace Pulse
-                </p>
-                <h2 className="text-xl font-semibold tracking-tight text-campus-900">운영 현황</h2>
-              </div>
+            <Card className="border-campus-200/80 bg-white/90 p-5 shadow-card">
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">
+                    Workspace Pulse
+                  </p>
+                  <h2 className="text-xl font-semibold tracking-tight text-campus-900">운영 현황</h2>
+                </div>
 
-              <div className="space-y-3">
-                <PulseItem
-                  label="Recruiting"
-                  value={
-                    team.is_recruiting
-                      ? '새 팀원을 받을 수 있는 상태입니다.'
-                      : '현재는 신규 모집을 닫아둔 상태입니다.'
-                  }
-                  tone={team.is_recruiting ? 'accent' : 'neutral'}
-                />
-                <PulseItem
-                  label="Members"
-                  value={`${members.length}/${team.max_members || '-'}명 참여 중`}
-                  tone="brand"
-                />
-                <PulseItem
-                  label="Skills"
-                  value={skills.length > 0 ? `${skills.length}개의 연결 기술이 등록되어 있습니다.` : '아직 연결된 기술이 없습니다.'}
-                />
+                <div className="space-y-3">
+                  <PulseItem
+                    label="Recruiting"
+                    value={
+                      team.is_recruiting
+                        ? '새로운 멤버를 받을 수 있는 상태입니다.'
+                        : '현재는 신규 모집을 닫아둔 상태입니다.'
+                    }
+                    tone={team.is_recruiting ? 'accent' : 'neutral'}
+                  />
+                  <PulseItem
+                    label="Members"
+                    value={`${members.length}/${team.max_members || '-'}명 참여 중`}
+                    tone="brand"
+                  />
+                  <PulseItem
+                    label="Skills"
+                    value={
+                      skills.length > 0
+                        ? `${skills.length}개의 연결 기술이 등록되어 있습니다.`
+                        : '아직 연결된 기술이 없습니다.'
+                    }
+                  />
+                </div>
               </div>
-            </div>
-          </Card>
-        </aside>
+            </Card>
+          </aside>
+        </div>
       </div>
-    </div>
+
+      <TeamDeleteConfirmModal
+        key={`${team.id}-${String(isDeleteModalOpen)}`}
+        open={isDeleteModalOpen}
+        teamName={team.name}
+        isSubmitting={isDeletingTeam}
+        errorMessage={deleteErrorMessage}
+        onClose={() => {
+          if (!isDeletingTeam) {
+            setIsDeleteModalOpen(false)
+          }
+        }}
+        onConfirm={async () => {
+          await onDeleteTeam()
+        }}
+      />
+    </>
   )
 }

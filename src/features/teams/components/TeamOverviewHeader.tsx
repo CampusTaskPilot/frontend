@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useId, useMemo, useState, type ChangeEvent } from 'react'
 import { SkillSelector } from '../../../components/common/SkillSelector'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
-import { InputField } from '../../../components/ui/InputField'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { TeamProfileImage } from './TeamProfileImage'
 import { TEAM_IMAGE_STORAGE_ENABLED, validateTeamImageFile } from '../lib/teamProfileImages'
 import { fetchSkillOptions, updateTeamProfile } from '../lib/teams'
@@ -24,6 +24,7 @@ interface TeamOverviewHeaderProps {
   tasks: TeamTaskItem[]
   isLeader: boolean
   currentUserId: string | null
+  editRequestKey?: number
   onOpenMembers: () => void
   onTeamUpdated: (payload: { team: TeamRecord; skills: TeamSkillTag[] }) => void
 }
@@ -40,7 +41,9 @@ interface TeamProfileDraft {
 }
 
 const eyebrowClass = 'text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500'
-const sectionGapClass = 'space-y-6'
+const fieldLabelClass = 'text-sm font-medium text-campus-700'
+const inputClass =
+  'w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-campus-50'
 
 function createInitialDraft(team: TeamRecord, skills: TeamSkillTag[]): TeamProfileDraft {
   return {
@@ -75,31 +78,29 @@ function getLeaderName(leader: ProfileSummary | null, members: TeamMemberWithPro
   )
 }
 
-function displayName(member: TeamMemberWithProfile) {
+function getDisplayName(member: TeamMemberWithProfile) {
   return member.profile?.full_name || member.profile?.email || member.user_id
 }
 
 function normalizeSummary(value: string | null | undefined) {
   const trimmed = value?.trim()
-  return trimmed ? trimmed : '팀의 핵심 방향과 협업 성격을 한 줄로 정리해 보세요.'
+  return trimmed ? trimmed : '팀이 어떤 방향으로 움직이는지 한 줄로 소개해 보세요.'
 }
 
 function normalizeDescription(value: string | null | undefined) {
   const trimmed = value?.trim()
-  return trimmed
-    ? trimmed
-    : '팀의 목표, 협업 방식, 현재 집중하고 있는 주제를 적어두면 멤버들이 빠르게 맥락을 파악할 수 있습니다.'
+  return trimmed ? trimmed : '팀의 목표, 작업 방식, 현재 진행 중인 내용을 적어두면 멤버들이 더 빠르게 이해할 수 있습니다.'
 }
 
 function MemberFace({ member }: { member: TeamMemberWithProfile }) {
   const profileImageUrl = member.profile?.profile_image_url ?? null
-  const initial = displayName(member).trim().charAt(0).toUpperCase() || 'U'
+  const initial = getDisplayName(member).trim().charAt(0).toUpperCase() || 'U'
 
   if (profileImageUrl) {
     return (
       <img
         src={profileImageUrl}
-        alt={displayName(member)}
+        alt={getDisplayName(member)}
         className="h-9 w-9 rounded-full border border-white/70 object-cover shadow-sm"
       />
     )
@@ -112,6 +113,100 @@ function MemberFace({ member }: { member: TeamMemberWithProfile }) {
   )
 }
 
+function TextField({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  type = 'text',
+  inputMode,
+  step,
+  onCompositionStart,
+  onCompositionEnd,
+  onKeyDown,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  placeholder?: string
+  type?: string
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
+  step?: number
+  onCompositionStart?: React.CompositionEventHandler<HTMLInputElement>
+  onCompositionEnd?: React.CompositionEventHandler<HTMLInputElement>
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
+}) {
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className={fieldLabelClass}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={inputClass}
+        inputMode={inputMode}
+        step={step}
+        onCompositionStart={onCompositionStart}
+        onCompositionEnd={onCompositionEnd}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+      />
+    </div>
+  )
+}
+
+function TextareaField({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+  rows,
+  placeholder,
+  onCompositionStart,
+  onCompositionEnd,
+  onKeyDown,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  rows: number
+  placeholder?: string
+  onCompositionStart?: React.CompositionEventHandler<HTMLTextAreaElement>
+  onCompositionEnd?: React.CompositionEventHandler<HTMLTextAreaElement>
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>
+}) {
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className={fieldLabelClass}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className={inputClass}
+        onCompositionStart={onCompositionStart}
+        onCompositionEnd={onCompositionEnd}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+      />
+    </div>
+  )
+}
+
 export function TeamOverviewHeader({
   team,
   leader,
@@ -119,9 +214,17 @@ export function TeamOverviewHeader({
   skills,
   isLeader,
   currentUserId,
+  editRequestKey = 0,
   onOpenMembers,
   onTeamUpdated,
 }: TeamOverviewHeaderProps) {
+  const ime = useImeSafeSubmit()
+  const nameFieldId = useId()
+  const categoryFieldId = useId()
+  const maxMembersFieldId = useId()
+  const summaryFieldId = useId()
+  const descriptionFieldId = useId()
+
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<TeamProfileDraft>(() => createInitialDraft(team, skills))
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([])
@@ -137,7 +240,7 @@ export function TeamOverviewHeader({
       const aLeader = Number(a.user_id === team.leader_id || a.role === 'leader')
       const bLeader = Number(b.user_id === team.leader_id || b.role === 'leader')
       if (aLeader !== bLeader) return bLeader - aLeader
-      return displayName(a).localeCompare(displayName(b), 'ko')
+      return getDisplayName(a).localeCompare(getDisplayName(b), 'ko')
     })
   }, [members, team.leader_id])
 
@@ -157,6 +260,32 @@ export function TeamOverviewHeader({
       setImagePreviewUrl(team.image_url ?? '')
     }
   }, [isEditing, skills, team])
+
+  useEffect(() => {
+    if (editRequestKey > 0) {
+      openEditor()
+    }
+  }, [editRequestKey])
+
+  useEffect(() => {
+    if (!isEditing) return
+
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSaving) {
+        event.preventDefault()
+        setIsEditing(false)
+      }
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isEditing, isSaving])
 
   useEffect(() => {
     return () => {
@@ -179,15 +308,15 @@ export function TeamOverviewHeader({
     }
   }
 
-  function updateDraft<K extends keyof TeamProfileDraft>(key: K, value: TeamProfileDraft[K]) {
-    setDraft((prev) => ({ ...prev, [key]: value }))
-  }
-
   function openEditor() {
     setErrorMessage('')
     setSuccessMessage('')
     setIsEditing(true)
     void ensureSkillOptions()
+  }
+
+  function updateDraft<K extends keyof TeamProfileDraft>(key: K, value: TeamProfileDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }))
   }
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
@@ -207,7 +336,7 @@ export function TeamOverviewHeader({
 
     setSelectedImageFile(file)
     setImagePreviewUrl(URL.createObjectURL(file))
-    setDraft((prev) => ({ ...prev, removeImage: false }))
+    setDraft((current) => ({ ...current, removeImage: false }))
     setErrorMessage('')
   }
 
@@ -225,7 +354,7 @@ export function TeamOverviewHeader({
 
   async function handleSave() {
     if (!currentUserId) {
-      setErrorMessage('로그인한 사용자만 저장할 수 있습니다.')
+      setErrorMessage('로그인한 사용자만 수정할 수 있습니다.')
       return
     }
 
@@ -259,11 +388,7 @@ export function TeamOverviewHeader({
       setIsEditing(false)
       setSelectedImageFile(null)
       setImagePreviewUrl(result.team.image_url ?? '')
-      setSuccessMessage(
-        selectedImageFile || draft.removeImage
-          ? '팀 정보와 커버 이미지가 저장되었습니다.'
-          : '팀 정보가 저장되었습니다.',
-      )
+      setSuccessMessage(selectedImageFile || draft.removeImage ? '팀 정보와 커버 이미지가 저장되었습니다.' : '팀 정보가 저장되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '팀 정보를 저장하지 못했습니다.')
     } finally {
@@ -301,9 +426,7 @@ export function TeamOverviewHeader({
                     <Badge variant={team.is_recruiting ? 'success' : 'neutral'}>
                       {team.is_recruiting ? '모집 중' : '모집 마감'}
                     </Badge>
-                    <Badge variant={isLeader ? 'warning' : 'neutral'}>
-                      {isLeader ? '리더 권한' : '멤버 보기'}
-                    </Badge>
+                    <Badge variant={isLeader ? 'warning' : 'neutral'}>{isLeader ? '리더 권한' : '멤버 보기'}</Badge>
                   </div>
 
                   <div className="space-y-2">
@@ -315,49 +438,49 @@ export function TeamOverviewHeader({
               </div>
 
               <div className="grid gap-3 border-t border-campus-200/80 pt-5 md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr),repeat(3,minmax(0,1fr))]">
-              <div className="rounded-[22px] border border-campus-200 bg-white px-4 py-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex -space-x-2">
-                    {visibleMembers.map((member) => (
-                      <MemberFace key={`${member.team_id}-${member.user_id}`} member={member} />
-                    ))}
-                  </div>
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-campus-500">Team Members</p>
-                    <p className="text-base font-semibold leading-6 tracking-tight text-campus-900">{members.length}명 참여 중</p>
-                    <p className="text-sm leading-5 text-campus-500">
-                      {hiddenMemberCount > 0 ? `현재 참여 중인 멤버, 외 ${hiddenMemberCount}명` : '현재 참여 중인 멤버'}
-                    </p>
+                <div className="rounded-[22px] border border-campus-200 bg-white px-4 py-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex -space-x-2">
+                      {visibleMembers.map((member) => (
+                        <MemberFace key={`${member.team_id}-${member.user_id}`} member={member} />
+                      ))}
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-campus-500">Team Members</p>
+                      <p className="text-base font-semibold leading-6 tracking-tight text-campus-900">{members.length}명 참여 중</p>
+                      <p className="text-sm leading-5 text-campus-500">
+                        {hiddenMemberCount > 0 ? `현재 참여 중인 멤버, 외 ${hiddenMemberCount}명` : '현재 참여 중인 멤버'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-1 rounded-[22px] border border-campus-200 bg-white px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-campus-500">Leader</p>
-                <p className="text-base font-semibold tracking-tight text-campus-900">{leaderName}</p>
-                <p className="text-sm leading-6 text-campus-500">현재 팀을 관리하는 멤버</p>
-              </div>
+                <div className="space-y-1 rounded-[22px] border border-campus-200 bg-white px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-campus-500">Leader</p>
+                  <p className="text-base font-semibold tracking-tight text-campus-900">{leaderName}</p>
+                  <p className="text-sm leading-6 text-campus-500">현재 팀을 관리하는 멤버</p>
+                </div>
 
-              <div className="space-y-1 rounded-[22px] border border-campus-200 bg-white px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-campus-500">Category</p>
-                <p className="text-base font-semibold tracking-tight text-campus-900">{team.category?.trim() || '-'}</p>
-                <p className="text-sm leading-6 text-campus-500">팀 성격을 나타내는 분류</p>
-              </div>
+                <div className="space-y-1 rounded-[22px] border border-campus-200 bg-white px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-campus-500">Category</p>
+                  <p className="text-base font-semibold tracking-tight text-campus-900">{team.category?.trim() || '-'}</p>
+                  <p className="text-sm leading-6 text-campus-500">팀 성격을 나타내는 분류</p>
+                </div>
 
-              <div className="space-y-1 rounded-[22px] border border-campus-200 bg-white px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-campus-500">Tech Stack</p>
-                <p className="text-base font-semibold tracking-tight text-campus-900">
-                  {previewSkills.length > 0 ? previewSkills.map((skill) => skill.name).join(', ') : '연결된 기술 없음'}
-                </p>
-                <p className="text-sm leading-6 text-campus-500">
-                  {previewSkills.length > 0
-                    ? remainingSkillCount > 0
-                      ? `외 ${remainingSkillCount}개 기술 연결`
-                      : `${skills.length}개 기술 연결`
-                    : `생성일 ${formatCreatedAt(team.created_at)}`}
-                </p>
+                <div className="space-y-1 rounded-[22px] border border-campus-200 bg-white px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-campus-500">Tech Stack</p>
+                  <p className="text-base font-semibold tracking-tight text-campus-900">
+                    {previewSkills.length > 0 ? previewSkills.map((skill) => skill.name).join(', ') : '연결된 기술 없음'}
+                  </p>
+                  <p className="text-sm leading-6 text-campus-500">
+                    {previewSkills.length > 0
+                      ? remainingSkillCount > 0
+                        ? `외 ${remainingSkillCount}개 기술 연결`
+                        : `${skills.length}개 기술 연결`
+                      : `생성일 ${formatCreatedAt(team.created_at)}`}
+                  </p>
+                </div>
               </div>
-            </div>
             </div>
           </div>
         </div>
@@ -368,26 +491,20 @@ export function TeamOverviewHeader({
           </div>
         )}
 
-        {isLeader && (
-          <Button
-            type="button"
-            data-team-edit-trigger="true"
-            onClick={openEditor}
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden="true"
-          >
-            팀 정보 수정
-          </Button>
-        )}
-
         <button type="button" onClick={onOpenMembers} className="sr-only" tabIndex={-1} aria-hidden="true">
           멤버 관리
         </button>
       </section>
 
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-campus-900/60 px-4 py-6 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-campus-900/60 px-4 py-6 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isSaving) {
+              setIsEditing(false)
+            }
+          }}
+        >
           <Card className="flex max-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-campus-200 bg-white p-0 shadow-2xl shadow-campus-900/15">
             <div className="border-b border-campus-200 px-6 py-5">
               <div className="flex items-start justify-between gap-4">
@@ -395,10 +512,17 @@ export function TeamOverviewHeader({
                   <p className={eyebrowClass}>Edit Team</p>
                   <h3 className="text-2xl font-semibold tracking-tight text-campus-900">팀 프로필 수정</h3>
                   <p className="text-sm leading-6 text-campus-500">
-                    커버 이미지, 소개, 카테고리, 모집 상태와 연결 기술을 한 번에 관리할 수 있습니다.
+                    커버 이미지, 소개, 카테고리, 모집 상태와 연결 기술까지 한 번에 관리할 수 있습니다.
                   </p>
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => !isSaving && setIsEditing(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => !isSaving && setIsEditing(false)}
+                  disabled={isSaving}
+                >
                   닫기
                 </Button>
               </div>
@@ -412,7 +536,7 @@ export function TeamOverviewHeader({
                       src={displayImageUrl}
                       alt={`${draft.name || team.name} preview`}
                       teamName={draft.name || team.name}
-                      summary={normalizeSummary(draft.summary || team.summary)}
+                      summary={normalizeSummary(draft.summary)}
                       category={draft.category || team.category}
                       className="aspect-[5/4] min-h-[260px] w-full"
                       imageClassName="h-full w-full object-cover"
@@ -424,7 +548,7 @@ export function TeamOverviewHeader({
                     {selectedImageFile
                       ? `선택한 이미지: ${selectedImageFile.name}`
                       : draft.removeImage
-                        ? '현재 이미지를 제거하도록 설정했습니다.'
+                        ? '현재 이미지를 제거하도록 설정되어 있습니다.'
                         : team.image_url
                           ? '현재 등록된 커버 이미지를 사용 중입니다.'
                           : '아직 등록된 커버 이미지가 없습니다.'}
@@ -433,15 +557,16 @@ export function TeamOverviewHeader({
                   <div className="flex flex-wrap gap-2">
                     <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-campus-200 bg-white px-4 py-2.5 text-sm font-medium text-campus-700 transition hover:bg-campus-50">
                       이미지 선택
-                      <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                      <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} disabled={isSaving} />
                     </label>
                     <Button
                       type="button"
                       variant="ghost"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         setSelectedImageFile(null)
                         setImagePreviewUrl('')
-                        setDraft((prev) => ({ ...prev, removeImage: true }))
+                        setDraft((current) => ({ ...current, removeImage: true }))
                       }}
                       disabled={isSaving}
                     >
@@ -450,10 +575,11 @@ export function TeamOverviewHeader({
                     <Button
                       type="button"
                       variant="ghost"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         setSelectedImageFile(null)
                         setImagePreviewUrl(team.image_url ?? '')
-                        setDraft((prev) => ({ ...prev, removeImage: false }))
+                        setDraft((current) => ({ ...current, removeImage: false }))
                       }}
                       disabled={isSaving}
                     >
@@ -464,121 +590,143 @@ export function TeamOverviewHeader({
                   <div className="rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm leading-6 text-campus-700">
                     {TEAM_IMAGE_STORAGE_ENABLED
                       ? '이미지는 Supabase Storage에 저장되며 저장 직후 팀 프로필에 반영됩니다.'
-                      : '현재는 이미지 업로드 기능이 비활성화되어 있습니다.'}
+                      : '현재 이미지 업로드 기능은 비활성화되어 있습니다.'}
                   </div>
                 </div>
               </div>
 
-              <div className={sectionGapClass + ' min-h-0 overflow-y-auto p-6'}>
-                {errorMessage && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-                    {errorMessage}
-                  </div>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <InputField
-                    label="팀 이름"
-                    value={draft.name}
-                    onChange={(event) => updateDraft('name', event.target.value)}
-                    placeholder="예: Campus Makers"
-                    disabled={isSaving}
-                  />
-                  <InputField
-                    label="카테고리"
-                    value={draft.category}
-                    onChange={(event) => updateDraft('category', event.target.value)}
-                    placeholder="예: 디자인 시스템"
-                    disabled={isSaving}
-                  />
-                  <InputField
-                    label="최대 인원"
-                    type="number"
-                    min={Math.max(members.length, 2)}
-                    value={draft.maxMembers}
-                    onChange={(event) => updateDraft('maxMembers', event.target.value)}
-                    disabled={isSaving}
-                  />
-                  <label className="space-y-2 text-sm font-medium text-campus-700">
-                    <span>모집 상태</span>
-                    <span className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 text-sm text-campus-700">
-                      <input
-                        type="checkbox"
-                        checked={draft.isRecruiting}
-                        onChange={(event) => updateDraft('isRecruiting', event.target.checked)}
-                        className="h-4 w-4 rounded border-campus-300 text-brand-500 focus:ring-brand-300"
-                        disabled={isSaving}
-                      />
-                      {draft.isRecruiting
-                        ? '현재 새로운 참여자를 받고 있습니다.'
-                        : '현재는 새로운 참여자를 받지 않습니다.'}
-                    </span>
-                  </label>
-                </div>
-
-                <InputField
-                  label="팀 소개"
-                  value={draft.summary}
-                  onChange={(event) => updateDraft('summary', event.target.value)}
-                  placeholder="한 줄로 팀을 소개해 주세요."
-                  disabled={isSaving}
-                />
-
-                <label className="space-y-2 text-sm font-medium text-campus-700">
-                  <span>상세 설명</span>
-                  <textarea
-                    value={draft.description}
-                    onChange={(event) => updateDraft('description', event.target.value)}
-                    rows={7}
-                    placeholder="팀의 목표, 협업 방식, 현재 진행 상황을 설명해 주세요."
-                    className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
-                    disabled={isSaving}
-                  />
-                </label>
-
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-campus-900">기술 스택</p>
-                    <p className="text-xs text-campus-500">연결된 기술은 Overview와 팀 수정 화면에 함께 반영됩니다.</p>
-                  </div>
-
-                  {isLoadingSkillOptions ? (
-                    <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-5 text-sm text-campus-600">
-                      기술 목록을 불러오는 중입니다...
+              <div className="min-h-0 overflow-y-auto p-6">
+                <div className="space-y-6">
+                  {errorMessage && (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                      {errorMessage}
                     </div>
-                  ) : (
-                    <SkillSelector
-                      skills={skillOptions}
-                      selectedSkillIds={draft.skillIds}
-                      onSelectSkill={(skillId) => {
-                        if (!draft.skillIds.includes(skillId)) {
-                          updateDraft('skillIds', [...draft.skillIds, skillId])
-                        }
-                      }}
-                      onDeselectSkill={(skillId) =>
-                        updateDraft(
-                          'skillIds',
-                          draft.skillIds.filter((currentSkillId) => currentSkillId !== skillId),
-                        )
-                      }
-                      showSelectedList
-                      emptySelectedMessage="선택한 기술 스택이 없습니다."
-                    />
                   )}
-                </div>
 
-                <div className="flex flex-wrap justify-end gap-2 border-t border-campus-200 pt-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => !isSaving && setIsEditing(false)}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <TextField
+                      id={nameFieldId}
+                      label="팀 이름"
+                      value={draft.name}
+                      onChange={(value) => updateDraft('name', value)}
+                      onCompositionStart={ime.handleCompositionStart}
+                      onCompositionEnd={ime.handleCompositionEnd}
+                      onKeyDown={ime.preventEnterWhileComposing()}
+                      placeholder="예: Campus Makers"
+                      disabled={isSaving}
+                    />
+                    <TextField
+                      id={categoryFieldId}
+                      label="카테고리"
+                      value={draft.category}
+                      onChange={(value) => updateDraft('category', value)}
+                      onCompositionStart={ime.handleCompositionStart}
+                      onCompositionEnd={ime.handleCompositionEnd}
+                      onKeyDown={ime.preventEnterWhileComposing()}
+                      placeholder="예: 웹 서비스"
+                      disabled={isSaving}
+                    />
+                    <TextField
+                      id={maxMembersFieldId}
+                      label="최대 인원"
+                      type="number"
+                      inputMode="numeric"
+                      step={1}
+                      value={draft.maxMembers}
+                      onChange={(value) => updateDraft('maxMembers', value)}
+                      disabled={isSaving}
+                    />
+                    <div className="space-y-2">
+                      <span className={fieldLabelClass}>모집 상태</span>
+                      <label className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-campus-200 bg-campus-50 px-4 text-sm text-campus-700">
+                        <input
+                          type="checkbox"
+                          checked={draft.isRecruiting}
+                          onChange={(event) => updateDraft('isRecruiting', event.target.checked)}
+                          className="h-4 w-4 rounded border-campus-300 text-brand-500 focus:ring-brand-300"
+                          disabled={isSaving}
+                        />
+                        <span>{draft.isRecruiting ? '현재 새로운 참여자를 받고 있습니다.' : '현재는 새로운 참여자를 받지 않습니다.'}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <TextareaField
+                    id={summaryFieldId}
+                    label="팀 소개"
+                    value={draft.summary}
+                    onChange={(value) => updateDraft('summary', value)}
+                    onCompositionStart={ime.handleCompositionStart}
+                    onCompositionEnd={ime.handleCompositionEnd}
+                    onKeyDown={ime.preventEnterWhileComposing()}
+                    rows={3}
+                    placeholder="팀을 한두 문장으로 소개해 주세요."
                     disabled={isSaving}
-                  >
-                    취소
-                  </Button>
-                  <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
-                    {isSaving ? '저장 중...' : '저장'}
-                  </Button>
+                  />
+
+                  <TextareaField
+                    id={descriptionFieldId}
+                    label="상세 설명"
+                    value={draft.description}
+                    onChange={(value) => updateDraft('description', value)}
+                    onCompositionStart={ime.handleCompositionStart}
+                    onCompositionEnd={ime.handleCompositionEnd}
+                    onKeyDown={ime.preventEnterWhileComposing()}
+                    rows={7}
+                    placeholder="팀의 목표, 작업 방식, 현재 진행 상황을 소개해 주세요."
+                    disabled={isSaving}
+                  />
+
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-campus-900">기술 스택</p>
+                      <p className="text-xs text-campus-500">연결된 기술은 Overview와 팀 정보 수정 화면에 함께 반영됩니다.</p>
+                    </div>
+
+                    {isLoadingSkillOptions ? (
+                      <div className="rounded-2xl border border-campus-200 bg-campus-50 px-4 py-5 text-sm text-campus-600">
+                        기술 목록을 불러오는 중입니다...
+                      </div>
+                    ) : (
+                      <SkillSelector
+                        skills={skillOptions}
+                        selectedSkillIds={draft.skillIds}
+                        onSelectSkill={(skillId) => {
+                          if (!draft.skillIds.includes(skillId)) {
+                            updateDraft('skillIds', [...draft.skillIds, skillId])
+                          }
+                        }}
+                        onDeselectSkill={(skillId) =>
+                          updateDraft(
+                            'skillIds',
+                            draft.skillIds.filter((currentSkillId) => currentSkillId !== skillId),
+                          )
+                        }
+                        showSelectedList
+                        emptySelectedMessage="선택된 기술 스택이 없습니다."
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-2 border-t border-campus-200 pt-4">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => !isSaving && setIsEditing(false)}
+                      disabled={isSaving}
+                    >
+                      취소
+                    </Button>
+                    <Button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => void ime.runImeSafeAction(handleSave)}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? '저장 중...' : '저장'}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

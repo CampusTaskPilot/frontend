@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
+import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { cn } from '../../../lib/cn'
 import { CalendarEventCard } from './CalendarEventCard'
 import { fetchMeetingActionizerStatus, requestMeetingActionizer } from '../lib/meetingActionizer'
@@ -149,6 +150,7 @@ export function MeetingActionizerTab({
   members,
   onOpenTasks,
 }: MeetingActionizerTabProps) {
+  const ime = useImeSafeSubmit()
   const participantPlaceholder = useMemo(
     () => members.map(getParticipantLabel).join(', '),
     [members],
@@ -254,8 +256,7 @@ export function MeetingActionizerTab({
     })
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit() {
     if (isAnalyzing) return
 
     if (!requestedBy) {
@@ -466,7 +467,7 @@ export function MeetingActionizerTab({
           <p className="text-xs text-campus-500">팀별 실행 제한: 1시간에 1회</p>
         </div>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-4" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
           <fieldset disabled={isAnalyzing} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm font-medium text-campus-700">
@@ -474,6 +475,9 @@ export function MeetingActionizerTab({
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
                 placeholder="예: 주간 회의"
               />
@@ -494,6 +498,9 @@ export function MeetingActionizerTab({
             <textarea
               value={participantInput}
               onChange={(event) => setParticipantInput(event.target.value)}
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               rows={2}
               className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
               placeholder={participantPlaceholder || '쉼표 또는 줄바꿈으로 참여자 이름을 입력해 주세요.'}
@@ -516,6 +523,9 @@ export function MeetingActionizerTab({
             <textarea
               value={rawMeetingText}
               onChange={(event) => setRawMeetingText(event.target.value)}
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               rows={14}
               className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
               placeholder="회의 전문 텍스트를 붙여넣거나 위에서 텍스트 파일을 불러와 주세요."
@@ -539,7 +549,7 @@ export function MeetingActionizerTab({
           )}
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isSubmitting || remainingSeconds > 0}>
+            <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={isSubmitting || remainingSeconds > 0}>
               {isSubmitting ? '분석 중...' : '분석하기'}
             </Button>
           </div>

@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SkillSelector } from '../components/common/SkillSelector'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { InputField } from '../components/ui/InputField'
+import { useImeSafeSubmit } from '../hooks/useImeSafeSubmit'
 import { useAuth } from '../features/auth/context/useAuth'
 import { fetchSkillOptions, createTeamWithRelations } from '../features/teams/lib/teams'
 import type { SkillOption } from '../features/teams/types/team'
@@ -31,6 +32,7 @@ const SUMMARY_MIN_LENGTH = 10
 export function TeamCreatePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const ime = useImeSafeSubmit()
   const [form, setForm] = useState<TeamCreateFormState>(initialForm)
   const [skills, setSkills] = useState<SkillOption[]>([])
   const [selectedSkills, setSelectedSkills] = useState<number[]>([])
@@ -98,9 +100,7 @@ export function TeamCreatePage() {
     return ''
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function handleSubmit() {
     if (!user) {
       setErrorMessage('로그인 후 팀을 생성할 수 있습니다.')
       return
@@ -162,7 +162,7 @@ export function TeamCreatePage() {
         </p>
       </Card>
 
-      <form className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
+      <form className="space-y-6" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
         <Card className="space-y-5">
           <div className="space-y-2">
             <h2 className="font-display text-2xl text-campus-900">기본 정보</h2>
@@ -174,6 +174,9 @@ export function TeamCreatePage() {
               label="팀명"
               value={form.name}
               onChange={(event) => updateForm('name', event.target.value)}
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               placeholder="예: AI 스터디 팀"
               required
             />
@@ -181,12 +184,18 @@ export function TeamCreatePage() {
               label="카테고리"
               value={form.category}
               onChange={(event) => updateForm('category', event.target.value)}
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               placeholder="예: AI, 웹, 모바일"
             />
             <InputField
               label="한 줄 소개"
               value={form.summary}
               onChange={(event) => updateForm('summary', event.target.value)}
+              onCompositionStart={ime.handleCompositionStart}
+              onCompositionEnd={ime.handleCompositionEnd}
+              onKeyDown={ime.preventEnterWhileComposing()}
               hint={`최소 ${SUMMARY_MIN_LENGTH}자`}
               className="md:col-span-2"
             />
@@ -195,6 +204,9 @@ export function TeamCreatePage() {
               <textarea
                 value={form.description}
                 onChange={(event) => updateForm('description', event.target.value)}
+                onCompositionStart={ime.handleCompositionStart}
+                onCompositionEnd={ime.handleCompositionEnd}
+                onKeyDown={ime.preventEnterWhileComposing()}
                 rows={6}
                 className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-base text-campus-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200"
                 placeholder="팀의 목표, 진행 방식, 원하는 팀원을 적어주세요."
@@ -259,7 +271,7 @@ export function TeamCreatePage() {
         )}
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={isSubmitting}>
             {isSubmitting ? '팀 생성 중...' : '팀 생성 완료'}
           </Button>
         </div>
@@ -267,3 +279,4 @@ export function TeamCreatePage() {
     </section>
   )
 }
+
