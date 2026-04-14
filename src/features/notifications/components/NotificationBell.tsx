@@ -7,6 +7,7 @@ import {
   getNotificationFeed,
   markAllNotificationsReadAndSync,
   markNotificationReadAndSync,
+  subscribeNotificationRealtime,
   subscribeNotificationStore,
 } from '../lib/notificationStore'
 import type { NotificationItem } from '../types'
@@ -37,7 +38,7 @@ function formatRelativeTime(value: string) {
 
 export function NotificationBell() {
   const navigate = useNavigate()
-  const { session, user } = useAuth()
+  const { user } = useAuth()
   const [items, setItems] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
@@ -45,7 +46,7 @@ export function NotificationBell() {
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (!session?.access_token || !user) {
+    if (!user) {
       setItems([])
       setUnreadCount(0)
       return
@@ -54,7 +55,7 @@ export function NotificationBell() {
     let isMounted = true
 
     const syncFromCache = () => {
-      const cached = getCachedNotificationFeed({ limit: RECENT_LIMIT, offset: 0 })
+      const cached = getCachedNotificationFeed({ userId: user.id, limit: RECENT_LIMIT, offset: 0 })
       if (!cached || !isMounted) {
         return
       }
@@ -68,7 +69,7 @@ export function NotificationBell() {
       try {
         const response = await getNotificationFeed(
           {
-            accessToken: session.access_token,
+            userId: user.id,
             limit: RECENT_LIMIT,
             offset: 0,
           },
@@ -94,11 +95,12 @@ export function NotificationBell() {
     void load({ staleMs: 20_000 })
 
     const unsubscribe = subscribeNotificationStore(syncFromCache)
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void load({ staleMs: 20_000 })
-      }
-    }, 60_000)
+    const unsubscribeRealtime = subscribeNotificationRealtime({
+      userId: user.id,
+      onChange: () => {
+        void load({ force: true, staleMs: 0 })
+      },
+    })
 
     const handleFocus = () => {
       void load({ staleMs: 10_000 })
@@ -108,25 +110,25 @@ export function NotificationBell() {
     return () => {
       isMounted = false
       unsubscribe()
-      window.clearInterval(intervalId)
+      unsubscribeRealtime()
       window.removeEventListener('focus', handleFocus)
     }
-  }, [session?.access_token, user])
+  }, [user])
 
   useEffect(() => {
-    if (!isOpen || !session?.access_token) {
+    if (!isOpen || !user) {
       return
     }
 
     void getNotificationFeed(
       {
-        accessToken: session.access_token,
+        userId: user.id,
         limit: RECENT_LIMIT,
         offset: 0,
       },
       { staleMs: 5_000 },
     )
-  }, [isOpen, session?.access_token])
+  }, [isOpen, user])
 
   useEffect(() => {
     if (!isOpen) {
@@ -143,18 +145,18 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [isOpen])
 
-  if (!user || !session?.access_token) {
+  if (!user) {
     return null
   }
 
-  const accessToken = session.access_token
+  const currentUserId = user.id
 
   async function handleOpenNotification(item: NotificationItem) {
     if (!item.is_read) {
       try {
         await markNotificationReadAndSync({
           notificationId: item.id,
-          accessToken,
+          userId: currentUserId,
         })
       } catch (error) {
         console.error('Failed to mark notification as read', error)
@@ -167,7 +169,7 @@ export function NotificationBell() {
 
   async function handleMarkAllRead() {
     try {
-      await markAllNotificationsReadAndSync({ accessToken })
+      await markAllNotificationsReadAndSync({ userId: currentUserId })
     } catch (error) {
       console.error('Failed to mark all notifications as read', error)
     }

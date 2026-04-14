@@ -1,14 +1,16 @@
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { supabase } from '../../../lib/supabase'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from './notifications'
 import type { NotificationFeed } from '../types'
 
 interface NotificationFeedParams {
-  accessToken: string
+  userId: string
   unreadOnly?: boolean
   limit?: number
   offset?: number
 }
 
-type NotificationFeedCacheKeyParams = Omit<NotificationFeedParams, 'accessToken'>
+type NotificationFeedCacheKeyParams = NotificationFeedParams
 
 interface CacheEntry {
   data: NotificationFeed
@@ -23,6 +25,7 @@ const listeners = new Set<Listener>()
 
 function buildKey(params: NotificationFeedCacheKeyParams) {
   return JSON.stringify({
+    userId: params.userId,
     unreadOnly: Boolean(params.unreadOnly),
     limit: params.limit ?? 20,
     offset: params.offset ?? 0,
@@ -33,9 +36,7 @@ function notifyListeners() {
   listeners.forEach((listener) => listener())
 }
 
-function updateCachedFeeds(
-  updater: (current: NotificationFeed) => NotificationFeed,
-) {
+function updateCachedFeeds(updater: (current: NotificationFeed) => NotificationFeed) {
   for (const [key, entry] of feedCache.entries()) {
     feedCache.set(key, {
       ...entry,
@@ -94,7 +95,7 @@ export async function getNotificationFeed(
 
 export async function markNotificationReadAndSync(params: {
   notificationId: string
-  accessToken: string
+  userId: string
 }) {
   const updated = await markNotificationRead(params)
   updateCachedFeeds((current) => {
@@ -123,7 +124,7 @@ export async function markNotificationReadAndSync(params: {
 }
 
 export async function markAllNotificationsReadAndSync(params: {
-  accessToken: string
+  userId: string
 }) {
   const result = await markAllNotificationsRead(params)
   updateCachedFeeds((current) => ({
@@ -136,4 +137,35 @@ export async function markAllNotificationsReadAndSync(params: {
     unread_count: 0,
   }))
   return result
+}
+
+export function subscribeNotificationRealtime(params: {
+  userId: string
+  onChange: () => void
+}) {
+  let channel: RealtimeChannel | null = supabase.channel(`notifications:${params.userId}:${Date.now()}`)
+
+  channel = channel
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${params.userId}`,
+      },
+      () => {
+        feedCache.clear()
+        notifyListeners()
+        params.onChange()
+      },
+    )
+    .subscribe()
+
+  return () => {
+    if (channel) {
+      void supabase.removeChannel(channel)
+      channel = null
+    }
+  }
 }

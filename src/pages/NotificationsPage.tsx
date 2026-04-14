@@ -9,6 +9,7 @@ import {
   getNotificationFeed,
   markAllNotificationsReadAndSync,
   markNotificationReadAndSync,
+  subscribeNotificationRealtime,
   subscribeNotificationStore,
 } from '../features/notifications/lib/notificationStore'
 import type { NotificationItem } from '../features/notifications/types'
@@ -26,7 +27,7 @@ function formatDateTime(value: string) {
 
 export function NotificationsPage() {
   const navigate = useNavigate()
-  const { session, user } = useAuth()
+  const { user } = useAuth()
   const [filter, setFilter] = useState<NotificationFilter>('all')
   const [items, setItems] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -41,7 +42,7 @@ export function NotificationsPage() {
   }, [filter])
 
   useEffect(() => {
-    if (!session?.access_token || !user) {
+    if (!user) {
       return
     }
 
@@ -50,6 +51,7 @@ export function NotificationsPage() {
 
     const syncFromCache = () => {
       const cached = getCachedNotificationFeed({
+        userId: user.id,
         unreadOnly: filter === 'unread',
         limit: PAGE_SIZE,
         offset,
@@ -87,7 +89,7 @@ export function NotificationsPage() {
       try {
         const response = await getNotificationFeed(
           {
-            accessToken: session.access_token,
+            userId: user.id,
             unreadOnly: filter === 'unread',
             limit: PAGE_SIZE,
             offset,
@@ -125,19 +127,26 @@ export function NotificationsPage() {
     }
 
     const unsubscribe = subscribeNotificationStore(syncFromCache)
+    const unsubscribeRealtime = subscribeNotificationRealtime({
+      userId: user.id,
+      onChange: () => {
+        void load()
+      },
+    })
     void load()
 
     return () => {
       isMounted = false
       unsubscribe()
+      unsubscribeRealtime()
     }
-  }, [filter, page, session?.access_token, user])
+  }, [filter, page, user])
 
-  if (!session?.access_token || !user) {
+  if (!user) {
     return null
   }
 
-  const accessToken = session.access_token
+  const currentUserId = user.id
 
   async function handleMarkRead(item: NotificationItem) {
     if (item.is_read) {
@@ -148,7 +157,7 @@ export function NotificationsPage() {
     try {
       await markNotificationReadAndSync({
         notificationId: item.id,
-        accessToken,
+        userId: currentUserId,
       })
       navigate(item.href || '/notifications')
     } catch (error) {
@@ -158,7 +167,7 @@ export function NotificationsPage() {
 
   async function handleMarkAllRead() {
     try {
-      await markAllNotificationsReadAndSync({ accessToken })
+      await markAllNotificationsReadAndSync({ userId: currentUserId })
     } catch (error) {
       console.error('Failed to mark all notifications as read', error)
     }

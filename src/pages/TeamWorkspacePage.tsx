@@ -20,15 +20,16 @@ import {
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
 import {
   TeamApplicationApiError,
-  ensureTeamApplicationAnalysis,
   fetchTeamApplicationAnalysis,
   fetchMyTeamApplication,
   fetchTeamApplications,
+  requestTeamApplicationAnalysis,
   submitTeamApplication,
   updateTeamApplicationStatus,
 } from '../features/teams/lib/teamApplications'
 import { TeamMemberManagementApiError, removeTeamMember } from '../features/teams/lib/teamMemberManagement'
 import { deleteTeam, fetchTeamMembers, fetchTeamSkillTags, fetchTeamWorkspaceBase } from '../features/teams/lib/teams'
+import { supabase } from '../lib/supabase'
 import type {
   TeamApplicationAnalysisLookupRecord,
   TeamApplicationSummaryRecord,
@@ -143,10 +144,10 @@ export function TeamWorkspacePage() {
       try {
         const [result, myApplicationResult] = await Promise.all([
           fetchTeamWorkspaceBase(currentTeamId, user?.id ?? null),
-          session?.access_token && user
+          user
             ? fetchMyTeamApplication({
                 teamId: currentTeamId,
-                accessToken: session.access_token,
+                userId: user.id,
               }).catch((error) => {
                 console.error('Failed to load my application', error)
                 return null
@@ -172,7 +173,7 @@ export function TeamWorkspacePage() {
     return () => {
       isMounted = false
     }
-  }, [session?.access_token, teamId, user?.id])
+  }, [teamId, user?.id])
 
   const isTeamMember = baseData?.is_current_user_member ?? false
   const canManageApplications = baseData?.can_manage_applications ?? false
@@ -218,7 +219,6 @@ export function TeamWorkspacePage() {
 
     let isMounted = true
     const currentTeamId = teamId
-    const accessToken = session?.access_token ?? null
 
     async function loadTabData() {
       setTabError('')
@@ -262,11 +262,10 @@ export function TeamWorkspacePage() {
           setMembersLoaded(true)
         }
 
-        if (resolvedActiveTab === 'applications' && canManageApplications && accessToken && !applicationsLoaded) {
+        if (resolvedActiveTab === 'applications' && canManageApplications && !applicationsLoaded) {
           setIsApplicationLoading(true)
           const data = await fetchTeamApplications({
             teamId: currentTeamId,
-            accessToken,
           })
           if (!isMounted) return
           setApplications(data)
@@ -293,10 +292,115 @@ export function TeamWorkspacePage() {
     canManageApplications,
     membersLoaded,
     resolvedActiveTab,
-    session?.access_token,
     skillsLoaded,
     teamId,
   ])
+
+  useEffect(() => {
+    if (!teamId || !user?.id || !baseData?.team) {
+      return
+    }
+
+    const channel = supabase
+      .channel(`team-applications:${teamId}:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'team_applications',
+          filter: `team_id=eq.${teamId}`,
+        },
+        () => {
+          if (!isTeamMember) {
+            void fetchMyTeamApplication({ teamId, userId: user.id })
+              .then((data) => {
+                setMyApplication(data)
+              })
+              .catch((error) => {
+                console.error('Failed to sync my application', error)
+              })
+          }
+
+          if (canManageApplications && applicationsLoaded) {
+            void fetchTeamApplications({ teamId })
+              .then((data) => {
+                setApplications(data)
+              })
+              .catch((error) => {
+                console.error('Failed to sync team applications', error)
+              })
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [applicationsLoaded, baseData?.team, canManageApplications, isTeamMember, teamId, user?.id])
+
+  useEffect(() => {
+    if (!teamId || !baseData?.team) {
+      return
+    }
+
+    const trackedApplicationIds = new Set<string>([
+      ...applications.map((application) => application.id),
+      ...(myApplication ? [myApplication.id] : []),
+    ])
+
+    if (trackedApplicationIds.size === 0) {
+      return
+    }
+
+    const channel = supabase
+      .channel(`team-application-analyses:${teamId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'team_application_ai_analyses',
+        },
+        (payload) => {
+          const nextApplicationId = String(
+            (payload.new as { application_id?: string } | null)?.application_id ??
+              (payload.old as { application_id?: string } | null)?.application_id ??
+              '',
+          )
+
+          if (!trackedApplicationIds.has(nextApplicationId)) {
+            return
+          }
+
+          setApplicationAnalysisById((current) => {
+            if (!current[nextApplicationId]) {
+              return current
+            }
+
+            const next = { ...current }
+            delete next[nextApplicationId]
+            return next
+          })
+
+          if (canManageApplications && applicationsLoaded) {
+            void fetchTeamApplications({ teamId })
+              .then((data) => {
+                setApplications(data)
+              })
+              .catch((error) => {
+                console.error('Failed to sync application analysis summary', error)
+              })
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [applications, applicationsLoaded, baseData?.team, canManageApplications, myApplication, teamId])
 
   const tasks = useMemo<TeamTaskItem[]>(() => [], [])
   const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
@@ -364,10 +468,6 @@ export function TeamWorkspacePage() {
   }
 
   async function refreshApplicationAnalysis(applicationId: string) {
-    if (!session?.access_token) {
-      return null
-    }
-
     const inFlight = applicationAnalysisRequestsRef.current.get(applicationId)
     if (inFlight) {
       return inFlight
@@ -376,7 +476,6 @@ export function TeamWorkspacePage() {
     const request = (async () => {
       const analysis = await fetchTeamApplicationAnalysis({
         applicationId,
-        accessToken: session.access_token,
       })
       applyApplicationAnalysisUpdate(applicationId, analysis)
       return analysis
@@ -392,7 +491,7 @@ export function TeamWorkspacePage() {
   }
 
   async function handleSubmitApplication(message: string) {
-    if (!teamId || !session?.access_token) {
+    if (!teamId || !user?.id) {
       return
     }
 
@@ -402,11 +501,21 @@ export function TeamWorkspacePage() {
     try {
       const application = await submitTeamApplication({
         teamId,
-        accessToken: session.access_token,
+        applicantUserId: user.id,
         applicantMessage: message,
       })
       setMyApplication(application)
-      setApplicationFeedback('신청되었습니다. AI 분석은 백엔드에서 비동기로 준비됩니다.')
+      setApplicationFeedback('신청이 바로 저장되었습니다. AI 분석은 백그라운드에서 이어집니다.')
+
+      if (session?.access_token) {
+        void requestTeamApplicationAnalysis({
+          applicationId: application.id,
+          accessToken: session.access_token,
+          triggerSource: 'on_apply',
+        }).catch((error) => {
+          console.error('Failed to trigger team application analysis', error)
+        })
+      }
     } catch (error) {
       if (error instanceof TeamApplicationApiError) {
         setApplicationError(error.message)
@@ -455,12 +564,12 @@ export function TeamWorkspacePage() {
     setApplicationError('')
 
     try {
-      const updated = await ensureTeamApplicationAnalysis({
+      const response = await requestTeamApplicationAnalysis({
         applicationId: application.id,
         accessToken: session.access_token,
         triggerSource,
       })
-      applyApplicationSummaryUpdate(updated)
+      applyApplicationSummaryUpdate(response.application)
       setApplicationAnalysisById((current) => {
         if (!current[application.id]) {
           return current

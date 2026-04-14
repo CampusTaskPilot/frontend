@@ -351,7 +351,9 @@ export async function fetchTeamWorkspaceBase(teamId: string, userId: string | nu
     team,
     current_user_role: currentUserRole,
     is_current_user_member: Boolean(currentUserMembership),
-    can_manage_applications: Boolean(currentUserMembership && currentUserRole === 'leader') || team?.leader_id === userId,
+    can_manage_applications:
+      Boolean(currentUserMembership && ['leader', 'owner', 'admin', 'manage_applications'].includes(currentUserRole ?? '')) ||
+      team?.leader_id === userId,
     leader,
     skills,
   }
