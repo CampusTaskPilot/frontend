@@ -6,6 +6,42 @@ export default {
   theme: {
     extend: {
       colors: {
+        background: 'rgb(248 251 255 / <alpha-value>)',
+        foreground: 'rgb(26 34 51 / <alpha-value>)',
+        card: {
+          DEFAULT: 'rgb(255 255 255 / <alpha-value>)',
+          foreground: 'rgb(26 34 51 / <alpha-value>)',
+        },
+        popover: {
+          DEFAULT: 'rgb(255 255 255 / <alpha-value>)',
+          foreground: 'rgb(26 34 51 / <alpha-value>)',
+        },
+        primary: {
+          DEFAULT: 'rgb(26 34 51 / <alpha-value>)',
+          foreground: 'rgb(255 255 255 / <alpha-value>)',
+        },
+        secondary: {
+          DEFAULT: 'rgb(238 243 251 / <alpha-value>)',
+          foreground: 'rgb(36 50 74 / <alpha-value>)',
+        },
+        muted: {
+          DEFAULT: 'rgb(244 247 251 / <alpha-value>)',
+          foreground: 'rgb(95 111 139 / <alpha-value>)',
+        },
+        accent: {
+          DEFAULT: 'rgb(238 243 255 / <alpha-value>)',
+          foreground: 'rgb(39 72 216 / <alpha-value>)',
+          100: '#e6fbf6',
+          400: '#21c7a8',
+          500: '#16ac90',
+        },
+        destructive: {
+          DEFAULT: 'rgb(225 29 72 / <alpha-value>)',
+          foreground: 'rgb(255 255 255 / <alpha-value>)',
+        },
+        border: 'rgb(219 230 247 / <alpha-value>)',
+        input: 'rgb(219 230 247 / <alpha-value>)',
+        ring: 'rgb(77 125 255 / <alpha-value>)',
         brand: {
           50: '#eef3ff',
           100: '#d9e4ff',
@@ -30,6 +66,7 @@ export default {
       fontFamily: {
         sans: ['"Pretendard"', '"Sora"', ...defaultTheme.fontFamily.sans],
         display: ['"SUIT"', '"Syne"', ...defaultTheme.fontFamily.sans],
+        heading: ['"Pretendard"', '"Sora"', ...defaultTheme.fontFamily.sans],
       },
       boxShadow: {
         card: '0 20px 40px rgba(53, 93, 255, 0.08)',

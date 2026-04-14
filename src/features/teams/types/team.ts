@@ -11,59 +11,18 @@ export interface TeamSkillTag {
   name: string
 }
 
-export type TeamOverviewThemeKey = 'sunset' | 'ocean' | 'forest' | 'midnight'
-export type TeamOverviewLayoutVariant = 'immersive' | 'balanced' | 'compact'
-export type TeamOverviewSectionKey = 'about' | 'goal' | 'recruiting' | 'work_style' | 'rules' | 'links'
-export type TeamOverviewLinkIconKey = 'github' | 'notion' | 'figma' | 'docs' | 'demo' | 'link'
-
-export interface TeamOverviewLinkRecord {
-  id: string
-  team_id: string
-  label: string
-  url: string
-  icon_key: TeamOverviewLinkIconKey
-  position: number
-  created_at?: string | null
-  updated_at?: string | null
-}
-
 export interface TeamRecord {
   id: string
   name: string
   summary: string
   description: string | null
+  team_note: string | null
   image_url: string | null
   max_members: number
   category: string | null
   is_recruiting: boolean
   created_at: string
   leader_id: string
-  overview_theme_key: TeamOverviewThemeKey | null
-  overview_layout_variant: TeamOverviewLayoutVariant | null
-  overview_emoji: string | null
-  overview_hero_subheadline: string | null
-  overview_banner_url: string | null
-  overview_hero_tags: string[]
-  overview_about_title: string | null
-  overview_goal_title: string | null
-  overview_goal_body: string | null
-  overview_recruiting_title: string | null
-  overview_recruiting_body: string | null
-  overview_recruiting_highlights: string[]
-  overview_work_style_title: string | null
-  overview_work_style_body: string | null
-  overview_work_style_items: string[]
-  overview_rules_title: string | null
-  overview_rules_body: string | null
-  overview_rules_items: string[]
-  overview_links_title: string | null
-  overview_section_order: TeamOverviewSectionKey[]
-  overview_show_about: boolean
-  overview_show_goal: boolean
-  overview_show_recruiting: boolean
-  overview_show_work_style: boolean
-  overview_show_rules: boolean
-  overview_show_links: boolean
 }
 
 export interface TeamMemberRecord {
@@ -117,8 +76,165 @@ export interface TeamDetailData {
 export interface TeamWorkspaceBase {
   team: TeamRecord | null
   current_user_role: TeamMemberRole | null
+  is_current_user_member: boolean
+  can_manage_applications: boolean
   leader: ProfileSummary | null
   skills: TeamSkillTag[]
+}
+
+export type TeamApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn'
+export type TeamApplicationAnalysisStatus =
+  | 'queued'
+  | 'deferred'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'insufficient_data'
+export type TeamApplicationAnalysisSuitability = 'high' | 'medium' | 'low' | 'insufficient_data'
+export type TeamApplicationAnalysisConfidence = 'high' | 'medium' | 'low'
+
+export interface TeamApplicationSnapshotSkill {
+  name: string
+  level: string | null
+}
+
+export interface TeamApplicationProjectSnapshot {
+  name: string | null
+  summary: string | null
+  role: string | null
+  tech_stack: string | null
+  contribution_summary: string | null
+  github_url: string | null
+  project_url: string | null
+}
+
+export interface TeamApplicationApplicantSnapshot {
+  user_id: string
+  display_name: string
+  headline: string | null
+  bio: string | null
+  skills: TeamApplicationSnapshotSkill[]
+  roles_interests: string[]
+  experience_summary: string | null
+  projects: TeamApplicationProjectSnapshot[]
+  portfolio_links: string[]
+  timezone_or_availability: string | null
+  application_message: string | null
+  profile_image_url: string | null
+  collaboration_style: string | null
+  working_style: string | null
+}
+
+export interface TeamApplicationTeamSnapshot {
+  team_id: string
+  title: string
+  short_description: string
+  full_description: string
+  desired_role: string | null
+  required_skills: string[]
+  preferred_skills: string[]
+  availability_expectations: string | null
+  tags: string[]
+  leader_fit_notes: string | null
+}
+
+export interface TeamApplicationAnalysis {
+  id: string
+  application_id: string
+  status: TeamApplicationAnalysisStatus
+  trigger_source: 'on_apply' | 'on_first_view' | 'manual_retry'
+  model: string | null
+  provider: string | null
+  prompt_version: string | null
+  suitability_level: TeamApplicationAnalysisSuitability | null
+  one_line_summary: string | null
+  reasons: string[]
+  strengths: string[]
+  concerns: string[]
+  follow_up_questions: string[]
+  confidence: TeamApplicationAnalysisConfidence | null
+  input_tokens: number | null
+  output_tokens: number | null
+  estimated_cost: number | null
+  attempt_count: number
+  queued_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  failed_at: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamApplicationAnalysisSummary {
+  id: string
+  application_id: string
+  status: TeamApplicationAnalysisStatus
+  trigger_source: 'on_apply' | 'on_first_view' | 'manual_retry'
+  suitability_level: TeamApplicationAnalysisSuitability | null
+  one_line_summary: string | null
+  confidence: TeamApplicationAnalysisConfidence | null
+  attempt_count: number
+  queued_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  failed_at: string | null
+  last_error: string | null
+  updated_at: string
+}
+
+export interface TeamApplicationAnalysisLookupRecord extends TeamApplicationAnalysisSummary {
+  details_available: boolean
+  reasons: string[]
+  strengths: string[]
+  concerns: string[]
+  follow_up_questions: string[]
+}
+
+export interface TeamApplicationActivityLog {
+  id: string
+  application_id: string
+  actor_user_id: string | null
+  event_type: string
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface TeamApplicationApplicantSummary {
+  display_name: string
+  headline: string | null
+  profile_image_url: string | null
+  skills: string[]
+  application_message: string | null
+}
+
+export interface TeamApplicationSummaryRecord {
+  id: string
+  team_id: string
+  applicant_user_id: string
+  status: TeamApplicationStatus
+  applied_at: string
+  reviewed_at: string | null
+  reviewed_by_user_id: string | null
+  review_note: string | null
+  applicant: TeamApplicationApplicantSummary
+  analysis: TeamApplicationAnalysisSummary | null
+}
+
+export interface TeamApplicationRecord {
+  id: string
+  team_id: string
+  applicant_user_id: string
+  applicant_message: string | null
+  status: TeamApplicationStatus
+  applied_at: string
+  reviewed_at: string | null
+  reviewed_by_user_id: string | null
+  review_note: string | null
+  applicant_snapshot: TeamApplicationApplicantSnapshot
+  team_snapshot: TeamApplicationTeamSnapshot
+  analysis: TeamApplicationAnalysis | null
+  activity_logs?: TeamApplicationActivityLog[]
 }
 
 export interface TeamDeletionResult {

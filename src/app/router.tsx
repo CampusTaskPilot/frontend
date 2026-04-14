@@ -12,6 +12,7 @@ import { SignupPage } from '../pages/SignupPage'
 import { TeamCreatePage } from '../pages/TeamCreatePage'
 import { TeamListPage } from '../pages/TeamListPage'
 import { TeamWorkspacePage } from '../pages/TeamWorkspacePage'
+import { NotificationsPage } from '../pages/NotificationsPage'
 
 export const appRouter = createBrowserRouter([
   {
@@ -37,6 +38,24 @@ export const appRouter = createBrowserRouter([
       {
         path: 'profile',
         element: <ProfilePage />,
+      },
+      {
+        path: 'notifications',
+        element: <NotificationsPage />,
+      },
+    ],
+  },
+  {
+    path: '/notifications',
+    element: (
+      <ProtectedRoute>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      {
+        index: true,
+        element: <NotificationsPage />,
       },
     ],
   },

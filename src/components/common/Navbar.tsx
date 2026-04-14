@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { AuthMenu } from './AuthMenu'
 import { PageContainer } from '../layout/PageContainer'
+import { NotificationBell } from '../../features/notifications/components/NotificationBell'
 
 const SERVICE_NAME = 'TaskPilot'
 
@@ -23,6 +24,7 @@ export function Navbar() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <AuthMenu />
         </div>
       </PageContainer>

@@ -1,18 +1,37 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../features/auth/context/useAuth'
+import { TeamApplicationCallout } from '../features/teams/components/TeamApplicationCallout'
+import { TeamApplicationsTab } from '../features/teams/components/TeamApplicationsTab'
 import { ProjectDirectionOverviewPanel } from '../features/teams/components/ProjectDirectionOverviewPanel'
 import { TeamCalendarTab } from '../features/teams/components/TeamCalendarTab'
 import { TeamMembersTab } from '../features/teams/components/TeamMembersTab'
 import { TeamOverviewTab } from '../features/teams/components/TeamOverviewTab'
 import { TeamPMTab, type PMAssistantTabKey } from '../features/teams/components/TeamPMTab'
-import { TeamTabs, type TeamWorkspaceTabKey } from '../features/teams/components/TeamTabs'
+import {
+  TeamTabs,
+  getAccessibleTeamWorkspaceTab,
+  getVisibleTeamWorkspaceTabs,
+  parseTeamWorkspaceTab,
+  type TeamWorkspaceTabKey,
+} from '../features/teams/components/TeamTabs'
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
+import {
+  TeamApplicationApiError,
+  ensureTeamApplicationAnalysis,
+  fetchTeamApplicationAnalysis,
+  fetchMyTeamApplication,
+  fetchTeamApplications,
+  submitTeamApplication,
+  updateTeamApplicationStatus,
+} from '../features/teams/lib/teamApplications'
 import { TeamMemberManagementApiError, removeTeamMember } from '../features/teams/lib/teamMemberManagement'
 import { deleteTeam, fetchTeamMembers, fetchTeamSkillTags, fetchTeamWorkspaceBase } from '../features/teams/lib/teams'
 import type {
+  TeamApplicationAnalysisLookupRecord,
+  TeamApplicationSummaryRecord,
   TeamMemberRole,
   TeamMemberWithProfile,
   TeamSkillTag,
@@ -39,7 +58,7 @@ function TeamHeaderFallback({
           <h1 className="font-display text-3xl text-campus-900">{teamName}</h1>
           <p className="text-sm text-campus-600">
             리더 <span className="font-medium text-campus-900">{leaderName}</span>
-            {isLeader ? ' · 현재 이 워크스페이스를 관리 중입니다.' : ' · 팀 진행 현황을 확인할 수 있습니다.'}
+            {isLeader ? '가 이 워크스페이스를 관리 중입니다.' : '의 현재 팀 작업 공간입니다.'}
           </p>
         </div>
 
@@ -57,42 +76,41 @@ export function TeamWorkspacePage() {
   const navigate = useNavigate()
   const { session, user } = useAuth()
 
-  const requestedTab = searchParams.get('tab')
-  const initialTab: TeamWorkspaceTabKey =
-    requestedTab === 'members' ||
-    requestedTab === 'tasks' ||
-    requestedTab === 'calendar' ||
-    requestedTab === 'pm'
-      ? requestedTab
-      : 'overview'
-
+  const requestedTab = parseTeamWorkspaceTab(searchParams.get('tab'))
   const requestedAssistant = searchParams.get('assistant')
   const initialAssistantTab: PMAssistantTabKey =
-    requestedAssistant === 'meeting-actionizer' ||
-    requestedAssistant === 'report-writer' ||
-    requestedAssistant === 'direction'
+    requestedAssistant === 'meeting-actionizer' || requestedAssistant === 'report-writer' || requestedAssistant === 'direction'
       ? requestedAssistant
       : 'direction'
 
-  const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>(initialTab)
+  const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>(requestedTab)
   const [baseData, setBaseData] = useState<TeamWorkspaceBase | null>(null)
   const [members, setMembers] = useState<TeamMemberWithProfile[]>([])
   const [skills, setSkills] = useState<TeamSkillTag[]>([])
+  const [applications, setApplications] = useState<TeamApplicationSummaryRecord[]>([])
+  const [applicationAnalysisById, setApplicationAnalysisById] = useState<Record<string, TeamApplicationAnalysisLookupRecord>>({})
+  const [myApplication, setMyApplication] = useState<TeamApplicationSummaryRecord | null>(null)
   const [isBaseLoading, setIsBaseLoading] = useState(true)
   const [isTabLoading, setIsTabLoading] = useState(false)
+  const [isApplicationLoading, setIsApplicationLoading] = useState(false)
   const [baseError, setBaseError] = useState('')
   const [tabError, setTabError] = useState('')
+  const [applicationFeedback, setApplicationFeedback] = useState('')
+  const [applicationError, setApplicationError] = useState('')
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [skillsLoaded, setSkillsLoaded] = useState(false)
+  const [applicationsLoaded, setApplicationsLoaded] = useState(false)
   const [memberActionSuccess, setMemberActionSuccess] = useState('')
   const [memberActionError, setMemberActionError] = useState('')
   const [pendingMemberId, setPendingMemberId] = useState<string | null>(null)
+  const [pendingApplicationId, setPendingApplicationId] = useState<string | null>(null)
   const [isDeletingTeam, setIsDeletingTeam] = useState(false)
   const [deleteErrorMessage, setDeleteErrorMessage] = useState('')
+  const applicationAnalysisRequestsRef = useRef<Map<string, Promise<TeamApplicationAnalysisLookupRecord | null>>>(new Map())
 
   useEffect(() => {
-    setActiveTab(initialTab)
-  }, [initialTab])
+    setActiveTab(requestedTab)
+  }, [requestedTab])
 
   useEffect(() => {
     if (!teamId) {
@@ -101,39 +119,48 @@ export function TeamWorkspacePage() {
       return
     }
 
-    const currentTeamId = teamId
     let isMounted = true
+    const currentTeamId = teamId
 
     async function loadBaseData() {
       setIsBaseLoading(true)
       setBaseError('')
+      setApplicationFeedback('')
+      setApplicationError('')
       setMemberActionSuccess('')
       setMemberActionError('')
       setDeleteErrorMessage('')
-      setIsDeletingTeam(false)
-      setPendingMemberId(null)
+      applicationAnalysisRequestsRef.current.clear()
       setMembers([])
       setSkills([])
+      setApplications([])
+      setApplicationAnalysisById({})
+      setMyApplication(null)
       setMembersLoaded(false)
       setSkillsLoaded(false)
+      setApplicationsLoaded(false)
 
       try {
-        const result = await fetchTeamWorkspaceBase(currentTeamId, user?.id ?? null)
+        const [result, myApplicationResult] = await Promise.all([
+          fetchTeamWorkspaceBase(currentTeamId, user?.id ?? null),
+          session?.access_token && user
+            ? fetchMyTeamApplication({
+                teamId: currentTeamId,
+                accessToken: session.access_token,
+              }).catch((error) => {
+                console.error('Failed to load my application', error)
+                return null
+              })
+            : Promise.resolve(null),
+        ])
         if (!isMounted) return
         setBaseData(result)
         setSkills(result.skills)
         setSkillsLoaded(true)
-      } catch (error: unknown) {
+        setMyApplication(result.is_current_user_member ? null : myApplicationResult)
+      } catch (error) {
         if (!isMounted) return
-
-        const detail =
-          error instanceof Error
-            ? error.message
-            : typeof error === 'object' && error !== null && 'message' in error
-              ? String((error as { message?: unknown }).message ?? '')
-              : ''
-
-        setBaseError(detail ? `팀 정보를 불러오지 못했습니다. (${detail})` : '팀 정보를 불러오지 못했습니다.')
+        setBaseError(error instanceof Error ? error.message : '팀 정보를 불러오지 못했습니다.')
       } finally {
         if (isMounted) {
           setIsBaseLoading(false)
@@ -142,25 +169,62 @@ export function TeamWorkspacePage() {
     }
 
     void loadBaseData()
-
     return () => {
       isMounted = false
     }
-  }, [teamId, user?.id])
+  }, [session?.access_token, teamId, user?.id])
+
+  const isTeamMember = baseData?.is_current_user_member ?? false
+  const canManageApplications = baseData?.can_manage_applications ?? false
+  const resolvedActiveTab = getAccessibleTeamWorkspaceTab(activeTab, isTeamMember, canManageApplications)
+  const visibleTabs = getVisibleTeamWorkspaceTabs(isTeamMember, canManageApplications)
 
   useEffect(() => {
     if (!teamId || !baseData?.team) {
       return
     }
 
-    const currentTeamId = teamId
+    const correctedRequestedTab = getAccessibleTeamWorkspaceTab(requestedTab, isTeamMember, canManageApplications)
+    const shouldStripAssistant = correctedRequestedTab !== 'pm' && searchParams.has('assistant')
+    const shouldReplaceUrl = correctedRequestedTab !== requestedTab || shouldStripAssistant
+
+    if (activeTab !== correctedRequestedTab) {
+      setActiveTab(correctedRequestedTab)
+    }
+
+    if (!shouldReplaceUrl) {
+      return
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.set('tab', correctedRequestedTab)
+    if (correctedRequestedTab !== 'pm') {
+      nextSearchParams.delete('assistant')
+    }
+
+    navigate(
+      {
+        pathname: `/teams/${teamId}`,
+        search: `?${nextSearchParams.toString()}`,
+      },
+      { replace: true },
+    )
+  }, [activeTab, baseData?.team, canManageApplications, isTeamMember, navigate, requestedTab, searchParams, teamId])
+
+  useEffect(() => {
+    if (!teamId || !baseData?.team) {
+      return
+    }
+
     let isMounted = true
+    const currentTeamId = teamId
+    const accessToken = session?.access_token ?? null
 
     async function loadTabData() {
       setTabError('')
 
       try {
-        if (activeTab === 'overview') {
+        if (resolvedActiveTab === 'overview') {
           const jobs: Array<Promise<void>> = []
 
           if (!membersLoaded) {
@@ -187,33 +251,52 @@ export function TeamWorkspacePage() {
             setIsTabLoading(true)
             await Promise.all(jobs)
           }
-
           return
         }
 
-        if ((activeTab === 'members' || activeTab === 'tasks' || activeTab === 'pm') && !membersLoaded) {
+        if ((resolvedActiveTab === 'members' || resolvedActiveTab === 'tasks' || resolvedActiveTab === 'pm') && !membersLoaded) {
           setIsTabLoading(true)
           const data = await fetchTeamMembers(currentTeamId)
           if (!isMounted) return
           setMembers(data)
           setMembersLoaded(true)
         }
+
+        if (resolvedActiveTab === 'applications' && canManageApplications && accessToken && !applicationsLoaded) {
+          setIsApplicationLoading(true)
+          const data = await fetchTeamApplications({
+            teamId: currentTeamId,
+            accessToken,
+          })
+          if (!isMounted) return
+          setApplications(data)
+          setApplicationsLoaded(true)
+        }
       } catch (error) {
         if (!isMounted) return
-        setTabError(error instanceof Error ? error.message : '탭 데이터를 불러오지 못했습니다.')
+        setTabError(error instanceof Error ? error.message : '데이터를 불러오지 못했습니다.')
       } finally {
         if (isMounted) {
           setIsTabLoading(false)
+          setIsApplicationLoading(false)
         }
       }
     }
 
     void loadTabData()
-
     return () => {
       isMounted = false
     }
-  }, [activeTab, baseData?.team, membersLoaded, skillsLoaded, teamId])
+  }, [
+    applicationsLoaded,
+    baseData?.team,
+    canManageApplications,
+    membersLoaded,
+    resolvedActiveTab,
+    session?.access_token,
+    skillsLoaded,
+    teamId,
+  ])
 
   const tasks = useMemo<TeamTaskItem[]>(() => [], [])
   const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
@@ -225,14 +308,177 @@ export function TeamWorkspacePage() {
     setMembersLoaded(true)
   }
 
-  async function handleMemberAction(member: TeamMemberWithProfile, action: 'remove' | 'leave') {
-    if (!teamId) {
-      setMemberActionError('팀 정보를 찾을 수 없습니다.')
+  function applyApplicationSummaryUpdate(updated: TeamApplicationSummaryRecord) {
+    setApplications((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+    setMyApplication((current) => (current?.id === updated.id ? updated : current))
+    setApplicationAnalysisById((current) => {
+      if (!current[updated.id]) {
+        return current
+      }
+
+      return {
+        ...current,
+        [updated.id]: updated.analysis
+          ? {
+              ...current[updated.id],
+              ...updated.analysis,
+              details_available:
+                current[updated.id]?.details_available &&
+                ['completed', 'failed', 'insufficient_data'].includes(updated.analysis.status),
+            }
+          : current[updated.id],
+      }
+    })
+  }
+
+  function applyApplicationAnalysisUpdate(applicationId: string, analysis: TeamApplicationAnalysisLookupRecord) {
+    setApplicationAnalysisById((current) => ({
+      ...current,
+      [applicationId]: analysis,
+    }))
+    setApplications((current) =>
+      current.map((item) =>
+        item.id === applicationId
+          ? {
+              ...item,
+              analysis: {
+                id: analysis.id,
+                application_id: analysis.application_id,
+                status: analysis.status,
+                trigger_source: analysis.trigger_source,
+                suitability_level: analysis.suitability_level,
+                one_line_summary: analysis.one_line_summary,
+                confidence: analysis.confidence,
+                attempt_count: analysis.attempt_count,
+                queued_at: analysis.queued_at,
+                started_at: analysis.started_at,
+                completed_at: analysis.completed_at,
+                failed_at: analysis.failed_at,
+                last_error: analysis.last_error,
+                updated_at: analysis.updated_at,
+              },
+            }
+          : item,
+      ),
+    )
+  }
+
+  async function refreshApplicationAnalysis(applicationId: string) {
+    if (!session?.access_token) {
+      return null
+    }
+
+    const inFlight = applicationAnalysisRequestsRef.current.get(applicationId)
+    if (inFlight) {
+      return inFlight
+    }
+
+    const request = (async () => {
+      const analysis = await fetchTeamApplicationAnalysis({
+        applicationId,
+        accessToken: session.access_token,
+      })
+      applyApplicationAnalysisUpdate(applicationId, analysis)
+      return analysis
+    })()
+
+    applicationAnalysisRequestsRef.current.set(applicationId, request)
+
+    try {
+      return await request
+    } finally {
+      applicationAnalysisRequestsRef.current.delete(applicationId)
+    }
+  }
+
+  async function handleSubmitApplication(message: string) {
+    if (!teamId || !session?.access_token) {
       return
     }
 
+    setApplicationError('')
+    setApplicationFeedback('')
+
+    try {
+      const application = await submitTeamApplication({
+        teamId,
+        accessToken: session.access_token,
+        applicantMessage: message,
+      })
+      setMyApplication(application)
+      setApplicationFeedback('신청되었습니다. AI 분석은 백엔드에서 비동기로 준비됩니다.')
+    } catch (error) {
+      if (error instanceof TeamApplicationApiError) {
+        setApplicationError(error.message)
+        return
+      }
+      setApplicationError(error instanceof Error ? error.message : '팀 신청에 실패했습니다.')
+    }
+  }
+
+  async function handleUpdateApplicationStatus(application: TeamApplicationSummaryRecord, statusValue: 'accepted' | 'rejected') {
+    if (!session?.access_token || !teamId) {
+      return
+    }
+
+    setPendingApplicationId(application.id)
+    setApplicationError('')
+    setApplicationFeedback('')
+
+    try {
+      const updated = await updateTeamApplicationStatus({
+        applicationId: application.id,
+        accessToken: session.access_token,
+        status: statusValue,
+      })
+      applyApplicationSummaryUpdate(updated)
+      setApplicationFeedback(statusValue === 'accepted' ? '지원자를 팀에 수락했습니다.' : '지원을 거절 처리했습니다.')
+      if (statusValue === 'accepted') {
+        await reloadMembers(teamId)
+      }
+    } catch (error) {
+      setApplicationError(error instanceof Error ? error.message : '신청 상태를 변경하지 못했습니다.')
+    } finally {
+      setPendingApplicationId(null)
+    }
+  }
+
+  async function handleEnsureAnalysis(
+    application: TeamApplicationSummaryRecord,
+    triggerSource: 'on_first_view' | 'manual_retry' = 'on_first_view',
+  ) {
     if (!session?.access_token) {
-      setMemberActionError('로그인이 만료되었습니다. 다시 로그인해 주세요.')
+      return
+    }
+
+    setPendingApplicationId(application.id)
+    setApplicationError('')
+
+    try {
+      const updated = await ensureTeamApplicationAnalysis({
+        applicationId: application.id,
+        accessToken: session.access_token,
+        triggerSource,
+      })
+      applyApplicationSummaryUpdate(updated)
+      setApplicationAnalysisById((current) => {
+        if (!current[application.id]) {
+          return current
+        }
+        const next = { ...current }
+        delete next[application.id]
+        return next
+      })
+    } catch (error) {
+      setApplicationError(error instanceof Error ? error.message : 'AI 분석을 다시 요청하지 못했습니다.')
+    } finally {
+      setPendingApplicationId(null)
+    }
+  }
+
+  async function handleMemberAction(member: TeamMemberWithProfile, action: 'remove' | 'leave') {
+    if (!teamId || !session?.access_token) {
+      setMemberActionError('로그인이 필요합니다.')
       return
     }
 
@@ -262,27 +508,16 @@ export function TeamWorkspacePage() {
     } catch (error) {
       if (error instanceof TeamMemberManagementApiError) {
         setMemberActionError(error.message)
-        return
+      } else {
+        setMemberActionError(error instanceof Error ? error.message : '멤버 작업을 완료하지 못했습니다.')
       }
-
-      setMemberActionError(error instanceof Error ? error.message : '멤버 제거 요청에 실패했습니다.')
     } finally {
       setPendingMemberId(null)
     }
   }
 
   async function handleDeleteTeam() {
-    if (!teamId) {
-      setDeleteErrorMessage('팀 정보를 찾을 수 없습니다.')
-      return
-    }
-
-    if (!isLeader) {
-      setDeleteErrorMessage('팀 리더만 삭제할 수 있습니다.')
-      return
-    }
-
-    if (isDeletingTeam) {
+    if (!teamId || !isLeader || isDeletingTeam) {
       return
     }
 
@@ -291,24 +526,12 @@ export function TeamWorkspacePage() {
 
     try {
       const deleted = await deleteTeam(teamId)
-
-      setBaseData(null)
-      setMembers([])
-      setSkills([])
-      setMembersLoaded(false)
-      setSkillsLoaded(false)
-      setActiveTab('overview')
-
       navigate('/teams', {
         replace: true,
-        state: {
-          feedbackMessage: `${deleted.name} 팀이 삭제되었습니다.`,
-        },
+        state: { feedbackMessage: `${deleted.name} 팀을 삭제했습니다.` },
       })
     } catch (error) {
-      setDeleteErrorMessage(
-        error instanceof Error ? error.message : '팀 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-      )
+      setDeleteErrorMessage(error instanceof Error ? error.message : '팀 삭제에 실패했습니다.')
     } finally {
       setIsDeletingTeam(false)
     }
@@ -316,19 +539,36 @@ export function TeamWorkspacePage() {
 
   function openPMAssistantTab(tab: PMAssistantTabKey) {
     if (!teamId) return
+    if (!isTeamMember) {
+      openWorkspaceTab('overview')
+      return
+    }
     setActiveTab('pm')
     navigate(`/teams/${teamId}?tab=pm&assistant=${tab}`)
   }
 
   function openWorkspaceTab(tab: TeamWorkspaceTabKey) {
-    setActiveTab(tab)
+    if (!teamId) return
+
+    const nextTab = getAccessibleTeamWorkspaceTab(tab, isTeamMember, canManageApplications)
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.set('tab', nextTab)
+    if (nextTab !== 'pm') {
+      nextSearchParams.delete('assistant')
+    }
+
+    setActiveTab(nextTab)
+    navigate({
+      pathname: `/teams/${teamId}`,
+      search: `?${nextSearchParams.toString()}`,
+    })
   }
 
   if (isBaseLoading) {
     return (
       <section className="page-shell">
         <Card>
-          <p className="text-sm text-campus-600">워크스페이스 정보를 불러오는 중입니다...</p>
+          <p className="text-sm text-campus-600">워크스페이스 정보를 불러오는 중…</p>
         </Card>
       </section>
     )
@@ -362,7 +602,7 @@ export function TeamWorkspacePage() {
 
   return (
     <section className="page-shell">
-      {activeTab !== 'overview' && (
+      {resolvedActiveTab !== 'overview' && (
         <TeamHeaderFallback
           teamName={baseData.team.name}
           leaderName={leaderName}
@@ -373,105 +613,126 @@ export function TeamWorkspacePage() {
 
       <div className="grid items-start gap-5 2xl:grid-cols-[260px,minmax(0,1fr)]">
         <Card className="h-fit 2xl:sticky 2xl:top-[calc(var(--app-header-height)+1.5rem)] 2xl:self-start">
-          <TeamTabs activeTab={activeTab} onChange={setActiveTab} />
+          <TeamTabs activeTab={resolvedActiveTab} onChange={openWorkspaceTab} tabs={visibleTabs} />
         </Card>
 
         <div className="space-y-4">
-          {tabError && activeTab !== 'overview' && (
+          {tabError && resolvedActiveTab !== 'overview' ? (
             <Card className="border-rose-200 bg-rose-50">
               <p className="text-sm text-rose-600">{tabError}</p>
             </Card>
-          )}
+          ) : null}
 
-          {activeTab !== 'overview' && !tabError && isTabLoading ? (
-            <Card>
-              <p className="text-sm text-campus-600">탭 데이터를 불러오는 중입니다...</p>
-            </Card>
-          ) : (
+          {resolvedActiveTab === 'overview' ? (
             <>
-              {activeTab === 'overview' && (
-                <TeamOverviewTab
-                  team={baseData.team}
-                  leader={baseData.leader}
-                  members={members}
-                  skills={skills}
-                  tasks={tasks}
-                  isLoading={isTabLoading}
-                  errorMessage={tabError}
-                  isLeader={Boolean(isLeader)}
-                  currentUserId={user?.id ?? null}
-                  isDeletingTeam={isDeletingTeam}
-                  deleteErrorMessage={deleteErrorMessage}
-                  onOpenMembers={() => openWorkspaceTab('members')}
-                  onDeleteTeam={handleDeleteTeam}
-                  onTeamUpdated={({ team, skills: nextSkills }) => {
-                    setBaseData((prev) => (prev ? { ...prev, team, skills: nextSkills } : prev))
-                    setSkills(nextSkills)
-                    setSkillsLoaded(true)
+              {!isTeamMember ? (
+                <TeamApplicationCallout
+                  canApply={Boolean(user && !myApplication && baseData.team.is_recruiting)}
+                  isSubmitting={pendingApplicationId === 'submit'}
+                  application={myApplication}
+                  errorMessage={applicationError}
+                  successMessage={applicationFeedback}
+                  onSubmit={async (message) => {
+                    setPendingApplicationId('submit')
+                    try {
+                      await handleSubmitApplication(message)
+                    } finally {
+                      setPendingApplicationId(null)
+                    }
                   }}
                 />
-              )}
+              ) : null}
 
-              {activeTab === 'members' && (
-                <TeamMembersTab
-                  members={members}
-                  isLeader={Boolean(isLeader)}
-                  currentUserId={user?.id ?? null}
-                  pendingMemberId={pendingMemberId}
-                  successMessage={memberActionSuccess}
-                  errorMessage={memberActionError}
-                  onClearMessage={() => {
-                    setMemberActionSuccess('')
-                    setMemberActionError('')
-                  }}
-                  onConfirmMemberAction={handleMemberAction}
-                />
-              )}
-
-              {activeTab === 'tasks' && teamId && (
-                <div className="space-y-4">
-                  <ProjectDirectionOverviewPanel
-                    teamId={teamId}
-                    currentUserId={user?.id ?? null}
-                    title="AI 방향 제안"
-                    subtitle="현재 팀 상태를 바탕으로 다음 액션을 제안합니다. 필요하면 바로 PM Assistant 탭으로 이동할 수 있습니다."
-                    emptyActionLabel="방향 제안 열기"
-                    collapsible
-                    defaultCollapsed
-                    onOpenAssistant={() => openPMAssistantTab('direction')}
-                    onOpenTasks={() => openWorkspaceTab('tasks')}
-                    onOpenCalendar={() => openWorkspaceTab('calendar')}
-                  />
-                  <TeamTasksTab
-                    teamId={teamId}
-                    currentUserId={user?.id ?? null}
-                    currentUserRole={(baseData.current_user_role ?? null) as TeamMemberRole | null}
-                    members={members}
-                  />
-                </div>
-              )}
-
-              {activeTab === 'calendar' && teamId && (
-                <TeamCalendarTab
-                  teamId={teamId}
-                  currentUserId={user?.id ?? null}
-                  isLeader={Boolean(isLeader)}
-                />
-              )}
-
-              {activeTab === 'pm' && teamId && (
-                <TeamPMTab
-                  teamId={teamId}
-                  currentUserId={user?.id ?? null}
-                  isLeader={Boolean(isLeader)}
-                  members={members}
-                  onOpenTasks={() => openWorkspaceTab('tasks')}
-                  onOpenCalendar={() => openWorkspaceTab('calendar')}
-                  initialTab={initialAssistantTab}
-                />
-              )}
+              <TeamOverviewTab
+                team={baseData.team}
+                leader={baseData.leader}
+                members={members}
+                skills={skills}
+                tasks={tasks}
+                isLoading={isTabLoading}
+                errorMessage={tabError}
+                isLeader={Boolean(isLeader)}
+                currentUserId={user?.id ?? null}
+                isDeletingTeam={isDeletingTeam}
+                deleteErrorMessage={deleteErrorMessage}
+                onDeleteTeam={handleDeleteTeam}
+                onTeamUpdated={({ team, skills: nextSkills }) => {
+                  setBaseData((prev) => (prev ? { ...prev, team, skills: nextSkills } : prev))
+                  setSkills(nextSkills)
+                  setSkillsLoaded(true)
+                }}
+              />
             </>
-          )}
+          ) : null}
+
+          {resolvedActiveTab === 'applications' ? (
+            <TeamApplicationsTab
+              applications={applications}
+              applicationAnalysisById={applicationAnalysisById}
+              isLoading={isApplicationLoading}
+              errorMessage={applicationError}
+              actionMessage={applicationFeedback}
+              pendingApplicationId={pendingApplicationId}
+              onRefreshAnalysis={refreshApplicationAnalysis}
+              onUpdateStatus={handleUpdateApplicationStatus}
+              onEnsureAnalysis={handleEnsureAnalysis}
+            />
+          ) : null}
+
+          {resolvedActiveTab === 'members' ? (
+            <TeamMembersTab
+              members={members}
+              isLeader={Boolean(isLeader)}
+              currentUserId={user?.id ?? null}
+              pendingMemberId={pendingMemberId}
+              successMessage={memberActionSuccess}
+              errorMessage={memberActionError}
+              onClearMessage={() => {
+                setMemberActionSuccess('')
+                setMemberActionError('')
+              }}
+              onConfirmMemberAction={handleMemberAction}
+            />
+          ) : null}
+
+          {resolvedActiveTab === 'tasks' && teamId ? (
+            <div className="space-y-4">
+              <ProjectDirectionOverviewPanel
+                teamId={teamId}
+                currentUserId={user?.id ?? null}
+                title="AI 방향 제안"
+                subtitle="현재 팀 상태를 기준으로 다음 액션을 제안합니다. 필요하면 바로 PM Assistant로 이동할 수 있습니다."
+                emptyActionLabel="방향 제안 열기"
+                collapsible
+                defaultCollapsed
+                onOpenAssistant={() => openPMAssistantTab('direction')}
+                onOpenTasks={() => openWorkspaceTab('tasks')}
+                onOpenCalendar={() => openWorkspaceTab('calendar')}
+              />
+              <TeamTasksTab
+                teamId={teamId}
+                currentUserId={user?.id ?? null}
+                currentUserRole={(baseData.current_user_role ?? null) as TeamMemberRole | null}
+                members={members}
+              />
+            </div>
+          ) : null}
+
+          {resolvedActiveTab === 'calendar' && teamId ? (
+            <TeamCalendarTab teamId={teamId} currentUserId={user?.id ?? null} isLeader={Boolean(isLeader)} />
+          ) : null}
+
+          {resolvedActiveTab === 'pm' && teamId ? (
+            <TeamPMTab
+              teamId={teamId}
+              currentUserId={user?.id ?? null}
+              isLeader={Boolean(isLeader)}
+              members={members}
+              onOpenTasks={() => openWorkspaceTab('tasks')}
+              onOpenCalendar={() => openWorkspaceTab('calendar')}
+              initialTab={initialAssistantTab}
+            />
+          ) : null}
         </div>
       </div>
     </section>

@@ -1,11 +1,48 @@
-﻿import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Badge } from '../../../components/ui/Badge'
-import { Button } from '../../../components/ui/Button'
-import { Card } from '../../../components/ui/Card'
-import { cn } from '../../../lib/cn'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import {
+  AlertCircle,
+  BriefcaseBusiness,
+  Crown,
+  FileText,
+  ImageOff,
+  LoaderCircle,
+  NotebookText,
+  PencilLine,
+  Sparkles,
+  Target,
+  Trash2,
+  Upload,
+  Users,
+} from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/shadcn/alert-dialog'
+import { Badge as UiBadge } from '@/components/shadcn/badge'
+import { Button as UiButton } from '@/components/shadcn/button'
+import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/shadcn/card'
+import { Input } from '@/components/shadcn/input'
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/shadcn/sheet'
+import { Skeleton } from '@/components/shadcn/skeleton'
+import { Textarea } from '@/components/shadcn/textarea'
+import { cn } from '@/lib/utils'
 import { TEAM_IMAGE_STORAGE_ENABLED, validateTeamImageFile } from '../lib/teamProfileImages'
-import { fetchTeamOverviewLinks, updateTeamOverviewCustomization } from '../lib/teams'
-import type { ProfileSummary, TeamMemberWithProfile, TeamOverviewLinkIconKey, TeamOverviewLinkRecord, TeamOverviewSectionKey, TeamOverviewThemeKey, TeamRecord, TeamSkillTag, TeamTaskItem } from '../types/team'
+import { updateTeamProfile } from '../lib/teams'
+import type {
+  ProfileSummary,
+  TeamMemberWithProfile,
+  TeamRecord,
+  TeamSkillTag,
+  TeamTaskItem,
+} from '../types/team'
 
 interface TeamOverviewTabProps {
   team: TeamRecord
@@ -19,229 +56,729 @@ interface TeamOverviewTabProps {
   currentUserId: string | null
   isDeletingTeam: boolean
   deleteErrorMessage: string
-  onOpenMembers: () => void
   onDeleteTeam: () => Promise<void>
   onTeamUpdated: (payload: { team: TeamRecord; skills: TeamSkillTag[] }) => void
 }
 
-type EditorTabKey = 'design' | 'sections' | 'links'
-type Draft = {
-  themeKey: TeamOverviewThemeKey
-  emoji: string
-  heroSubheadline: string
-  heroTags: string[]
-  aboutTitle: string
-  goalTitle: string
-  goalBody: string
-  recruitingTitle: string
-  recruitingBody: string
-  recruitingHighlights: string[]
-  workStyleTitle: string
-  workStyleBody: string
-  workStyleItems: string[]
-  rulesTitle: string
-  rulesBody: string
-  rulesItems: string[]
-  linksTitle: string
-  sectionOrder: TeamOverviewSectionKey[]
-  showAbout: boolean
-  showGoal: boolean
-  showRecruiting: boolean
-  showWorkStyle: boolean
-  showRules: boolean
-  showLinks: boolean
-  removeBanner: boolean
-}
-type LinkDraft = { id?: string; label: string; url: string; iconKey: TeamOverviewLinkIconKey }
-type ThemeDef = { key: TeamOverviewThemeKey; label: string; shell: string; overlay: string; card: string; badge: string; accent: string }
-
-const KR = { intro: '\uD300 \uC18C\uAC1C', goal: '\uD604\uC7AC \uBAA9\uD45C', recruiting: '\uBAA8\uC9D1', workStyle: '\uC791\uC5C5 \uBC29\uC2DD', rules: '\uD300 \uADDC\uCE59', teamIntro: '\uD300 \uD55C\uC904\uC18C\uAC1C', show: '\uD45C\uC2DC', editor: 'Overview Editor', customize: '\uAC1C\uC694 \uCEE4\uC2A4\uD130\uB9C8\uC774\uC988', design: '\uB514\uC790\uC778', sections: '\uC139\uC158', links: '\uB9C1\uD06C', members: '\uBA64\uBC84', delete: '\uC0AD\uC81C', save: '\uC800\uC7A5' } as const
-const HERO_EMOJI_OPTIONS = ['\u{1F680}', '\u{1F525}', '\u2728', '\u{1F4A1}', '\u{1F3AF}', '\u{1F91D}', '\u{1F6E0}\uFE0F', '\u{1F331}', '\u{1F4DA}', '\u{1F3A8}', '\u{1F4BB}', '\u{1F3C3}']
-const LINK_ICON_OPTIONS: TeamOverviewLinkIconKey[] = ['github', 'notion', 'figma', 'docs', 'demo', 'link']
-const OVERVIEW_ICON_LABELS: Record<TeamOverviewLinkIconKey, string> = { github: 'GitHub', notion: 'Notion', figma: 'Figma', docs: 'Docs', demo: 'Demo', link: 'Link' }
-const THEMES: ThemeDef[] = [
-  { key: 'sunset', label: 'Sunset', shell: 'bg-[linear-gradient(180deg,#fff8f2_0%,#fffdf9_40%,#ffffff_100%)]', overlay: 'bg-[linear-gradient(180deg,rgba(122,45,32,0.08)_0%,rgba(122,45,32,0.18)_38%,rgba(50,23,16,0.72)_100%)]', card: 'border-[#f2d6c8] bg-white/92', badge: 'border-white/30 bg-white/14 text-white', accent: 'from-[#f97360] via-[#f8a15e] to-[#f0c27a]' },
-  { key: 'ocean', label: 'Ocean', shell: 'bg-[linear-gradient(180deg,#f2fbfc_0%,#f8fcff_42%,#ffffff_100%)]', overlay: 'bg-[linear-gradient(180deg,rgba(17,70,91,0.10)_0%,rgba(17,70,91,0.20)_40%,rgba(7,28,39,0.78)_100%)]', card: 'border-[#cfe8ec] bg-white/92', badge: 'border-white/30 bg-white/12 text-white', accent: 'from-[#138a9e] via-[#45a7c5] to-[#78c6d4]' },
-  { key: 'forest', label: 'Forest', shell: 'bg-[linear-gradient(180deg,#f4fbf5_0%,#fbfdf9_42%,#ffffff_100%)]', overlay: 'bg-[linear-gradient(180deg,rgba(26,92,63,0.10)_0%,rgba(26,92,63,0.24)_40%,rgba(14,37,27,0.78)_100%)]', card: 'border-[#d7eadc] bg-white/92', badge: 'border-white/30 bg-white/12 text-white', accent: 'from-[#1f8f5f] via-[#45a172] to-[#83c58f]' },
-  { key: 'midnight', label: 'Midnight', shell: 'bg-[linear-gradient(180deg,#f5f7fb_0%,#fafbfe_42%,#ffffff_100%)]', overlay: 'bg-[linear-gradient(180deg,rgba(41,54,92,0.12)_0%,rgba(41,54,92,0.28)_38%,rgba(16,22,39,0.82)_100%)]', card: 'border-[#d8deef] bg-white/92', badge: 'border-white/30 bg-white/12 text-white', accent: 'from-[#415a9a] via-[#5f77b8] to-[#8ea2d8]' },
-]
-const TABS: Array<{ key: EditorTabKey; label: string }> = [{ key: 'design', label: KR.design }, { key: 'sections', label: KR.sections }, { key: 'links', label: KR.links }]
-const ORDER: TeamOverviewSectionKey[] = ['about', 'goal', 'recruiting', 'work_style', 'rules', 'links']
-const normalize = (value: string | null | undefined) => value?.trim() ?? ''
-const unique = (values: string[]) => Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
-const layoutClass = (variant: TeamRecord['overview_layout_variant']) => variant === 'immersive' ? 'grid gap-5 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]' : variant === 'compact' ? 'grid gap-4 md:grid-cols-2' : 'grid gap-5 md:grid-cols-2'
-const themeOf = (key: TeamOverviewThemeKey | null | undefined) => THEMES.find((theme) => theme.key === key) ?? THEMES[0]
-const isSafeExternalUrl = (value: string) => { try { const url = new URL(value); return url.protocol === 'http:' || url.protocol === 'https:' } catch { return false } }
-
-function makeDraft(team: TeamRecord): Draft {
-  return { themeKey: team.overview_theme_key ?? 'sunset', emoji: normalize(team.overview_emoji), heroSubheadline: normalize(team.overview_hero_subheadline), heroTags: unique(team.overview_hero_tags), aboutTitle: normalize(team.overview_about_title) || KR.intro, goalTitle: normalize(team.overview_goal_title) || KR.goal, goalBody: normalize(team.overview_goal_body), recruitingTitle: normalize(team.overview_recruiting_title) || KR.recruiting, recruitingBody: normalize(team.overview_recruiting_body), recruitingHighlights: unique(team.overview_recruiting_highlights), workStyleTitle: normalize(team.overview_work_style_title) || KR.workStyle, workStyleBody: normalize(team.overview_work_style_body), workStyleItems: unique(team.overview_work_style_items), rulesTitle: normalize(team.overview_rules_title) || KR.rules, rulesBody: normalize(team.overview_rules_body), rulesItems: unique(team.overview_rules_items), linksTitle: normalize(team.overview_links_title) || KR.links, sectionOrder: team.overview_section_order.length > 0 ? [...team.overview_section_order] : [...ORDER], showAbout: team.overview_show_about, showGoal: team.overview_show_goal, showRecruiting: team.overview_show_recruiting, showWorkStyle: team.overview_show_work_style, showRules: team.overview_show_rules, showLinks: team.overview_show_links, removeBanner: false }
+type EditDraft = {
+  name: string
+  summary: string
+  description: string
+  teamNote: string
+  removeImage: boolean
 }
 
-function ListBlock({ label, items, onChange }: { label: string; items: string[]; onChange: (value: string[]) => void }) {
-  const [value, setValue] = useState('')
-  return <div className="space-y-2"><p className="text-sm font-medium text-campus-700">{label}</p><div className="flex gap-2"><input value={value} onChange={(event) => setValue(event.target.value)} className="min-h-[3rem] flex-1 rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><Button type="button" variant="ghost" onClick={() => { const next = value.trim(); if (!next) return; onChange(unique([...items, next])); setValue('') }}>+</Button></div><div className="space-y-2">{items.map((item, index) => <div key={`${item}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-700"><span>{item}</span><button type="button" onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))} className="text-xs font-medium text-campus-500 hover:text-campus-700">\uC0AD\uC81C</button></div>)}</div></div>
+type StorySection = {
+  eyebrow: string
+  title: string
+  body: string
+  icon: LucideIcon
 }
 
-function SectionEditor({ title, checked, onCheckedChange, children }: { title: string; checked: boolean; onCheckedChange: (value: boolean) => void; children: ReactNode }) {
-  return <div className="space-y-4 rounded-[28px] border border-campus-200 bg-campus-50/60 p-5"><div className="flex items-center justify-between gap-3"><p className="text-lg font-semibold text-campus-900">{title}</p><label className="inline-flex items-center gap-2 rounded-full border border-campus-200 bg-white px-4 py-2 text-sm text-campus-700"><input type="checkbox" checked={checked} onChange={(event) => onCheckedChange(event.target.checked)} className="h-4 w-4 rounded border-campus-300" />{KR.show}</label></div>{children}</div>
+const numberFormatter = new Intl.NumberFormat('ko-KR')
+
+function normalize(value: string | null | undefined) {
+  return value?.trim() ?? ''
 }
 
-function SectionCard({ eyebrow, title, body, items, theme }: { eyebrow: string; title: string; body: string; items?: string[]; theme: Pick<ThemeDef, 'card' | 'badge'> }) {
-  const visibleItems = items?.filter(Boolean) ?? []
-  return <Card className={cn('space-y-4 rounded-[28px] shadow-card', theme.card)}><div className="space-y-2"><p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">{eyebrow}</p><h3 className="text-2xl font-semibold tracking-tight text-campus-900">{title}</h3></div>{body ? <p className="whitespace-pre-wrap text-sm leading-7 text-campus-700">{body}</p> : null}{visibleItems.length > 0 ? <div className="flex flex-wrap gap-2">{visibleItems.map((item) => <span key={item} className={cn('rounded-full border border-campus-200 px-3 py-1.5 text-sm font-medium text-campus-700', theme.badge)}>{item}</span>)}</div> : null}</Card>
+function makeDraft(team: TeamRecord): EditDraft {
+  return {
+    name: team.name,
+    summary: team.summary,
+    description: team.description ?? '',
+    teamNote: team.team_note ?? '',
+    removeImage: false,
+  }
 }
 
-function TeamDeleteConfirmModal({ open, teamName, isSubmitting, errorMessage, onClose, onConfirm }: { open: boolean; teamName: string; isSubmitting: boolean; errorMessage: string; onClose: () => void; onConfirm: () => Promise<void> }) {
-  if (!open) return null
-  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-campus-900/60 px-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSubmitting) onClose() }}><Card className="w-full max-w-md space-y-4 rounded-[28px] border border-campus-200 bg-white shadow-2xl"><div className="space-y-2"><p className="text-lg font-semibold text-campus-900">\uD300 \uC0AD\uC81C</p><p className="text-sm leading-6 text-campus-600"><strong className="text-campus-900">{teamName}</strong> \uD300\uC744 \uC0AD\uC81C\uD558\uBA74 \uB418\uB3CC\uB9B4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.</p></div>{errorMessage ? <p className="text-sm text-rose-600">{errorMessage}</p> : null}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>\uCDE8\uC18C</Button><Button type="button" className="border-rose-600 bg-rose-600 text-white hover:bg-rose-700" onClick={() => void onConfirm()} disabled={isSubmitting}>{isSubmitting ? '\uC0AD\uC81C \uC911...' : '\uC0AD\uC81C'}</Button></div></Card></div>
+function splitTextBlocks(value: string) {
+  const normalized = normalize(value).replace(/\r\n/g, '\n')
+  if (!normalized) return []
+
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+
+  if (paragraphs.length > 1) return paragraphs.slice(0, 3)
+
+  const sentences = normalized
+    .split(/(?<=[.!?。！？])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+
+  if (sentences.length <= 1) return [normalized]
+
+  const chunkSize = Math.max(1, Math.ceil(sentences.length / 3))
+
+  return Array.from({ length: Math.ceil(sentences.length / chunkSize) }, (_, index) =>
+    sentences.slice(index * chunkSize, (index + 1) * chunkSize).join(' '),
+  ).slice(0, 3)
 }
 
-export function TeamOverviewTab({ team, leader: _leader, members: _members, skills, tasks: _tasks, isLoading, errorMessage, isLeader, currentUserId, isDeletingTeam, deleteErrorMessage, onOpenMembers, onDeleteTeam, onTeamUpdated }: TeamOverviewTabProps) {
-  const [links, setLinks] = useState<TeamOverviewLinkRecord[]>([])
-  const [draftLinks, setDraftLinks] = useState<LinkDraft[]>([])
-  const [draft, setDraft] = useState<Draft>(() => makeDraft(team))
-  const [bannerPreviewUrl, setBannerPreviewUrl] = useState('')
-  const [selectedBannerFile, setSelectedBannerFile] = useState<File | null>(null)
+function buildStorySections(args: {
+  summary: string
+  description: string
+  leaderName: string
+  skillNames: string[]
+  memberCount: number
+  maxMembers: number
+  isRecruiting: boolean
+}) {
+  const blocks = splitTextBlocks(args.description)
+  const skillLine =
+    args.skillNames.length > 0
+      ? `${args.skillNames.slice(0, 4).join(', ')} 역량을 바탕으로 역할을 나누고, 필요한 기술은 팀 목표에 맞춰 유연하게 확장합니다.`
+      : '아직 등록된 기술 스택은 많지 않지만, 팀이 해결하려는 문제에 맞춰 필요한 역량을 정리해 나가는 단계입니다.'
+  const statusLine = args.isRecruiting
+    ? `현재 ${numberFormatter.format(args.memberCount)}명이 함께하고 있으며 최대 ${numberFormatter.format(args.maxMembers)}명까지 합류할 수 있습니다.`
+    : `현재 ${numberFormatter.format(args.memberCount)}명 규모로 운영 중이며, 기존 멤버 중심으로 작업 밀도와 완성도를 높이고 있습니다.`
+
+  return [
+    {
+      eyebrow: '핵심 소개',
+      title: '팀이 무엇을 만들고 있나요',
+      body: blocks[0] ?? args.summary,
+      icon: FileText,
+    },
+    {
+      eyebrow: '협업 방식',
+      title: '어떤 흐름으로 일하나요',
+      body: blocks[1] ?? skillLine,
+      icon: Target,
+    },
+    {
+      eyebrow: '운영 상태',
+      title: '지금 팀은 어떤 단계인가요',
+      body: blocks[2] ?? `${statusLine} 현재 운영 리더는 ${args.leaderName}입니다.`,
+      icon: NotebookText,
+    },
+  ] satisfies StorySection[]
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <Skeleton className="h-[28rem] rounded-[2rem]" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px]">
+        <Skeleton className="h-[24rem] rounded-[1.75rem]" />
+        <Skeleton className="h-[24rem] rounded-[1.75rem]" />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Skeleton className="h-72 rounded-[1.75rem]" />
+        <Skeleton className="h-72 rounded-[1.75rem]" />
+      </div>
+    </div>
+  )
+}
+
+function MetaCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+  return (
+    <div className="flex min-h-[4.75rem] min-w-0 items-center gap-3 rounded-[1.35rem] border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_16px_32px_-28px_rgba(15,23,42,0.45)]">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+        <Icon className="size-4" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="whitespace-nowrap text-[11px] font-semibold tracking-[0.16em] text-slate-500">{label}</p>
+        <p className="mt-1 break-keep text-sm font-semibold leading-5 text-slate-950">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+function StoryCard({ section }: { section: StorySection }) {
+  const Icon = section.icon
+
+  return (
+    <section className="flex h-full flex-col rounded-[1.5rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.88))] p-5 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.42)]">
+      <div className="flex items-start gap-3">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+          <Icon className="size-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <p className="whitespace-nowrap text-[11px] font-semibold tracking-[0.16em] text-slate-500">
+            {section.eyebrow}
+          </p>
+          <h3 className="mt-1 break-keep text-base font-semibold leading-6 text-slate-950">{section.title}</h3>
+        </div>
+      </div>
+      <p className="mt-4 break-keep text-sm leading-7 text-slate-600">{section.body}</p>
+    </section>
+  )
+}
+
+export function TeamOverviewTab(props: TeamOverviewTabProps) {
+  const {
+    team,
+    leader,
+    members,
+    skills,
+    isLoading,
+    errorMessage,
+    isLeader,
+    currentUserId,
+    isDeletingTeam,
+    deleteErrorMessage,
+    onDeleteTeam,
+    onTeamUpdated,
+  } = props
+  const baseDraft = useMemo(() => makeDraft(team), [team])
+  const [draft, setDraft] = useState<EditDraft>(() => baseDraft)
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
-  const [activeEditorTab, setActiveEditorTab] = useState<EditorTabKey>('design')
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState('')
-  const [linksError, setLinksError] = useState('')
-  const [loadingLinks, setLoadingLinks] = useState(true)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [emojiOpen, setEmojiOpen] = useState(false)
-  const emojiRef = useRef<HTMLDivElement | null>(null)
-  const theme = themeOf(draft.themeKey)
-  const bannerUrl = draft.removeBanner ? (team.image_url ?? '') : (bannerPreviewUrl || team.overview_banner_url || team.image_url || '')
-  const heroSubtitle = normalize(draft.heroSubheadline) || normalize(team.overview_hero_subheadline) || team.summary
-  const heroTags = draft.heroTags.length > 0 ? draft.heroTags : team.overview_hero_tags
-  const emojiOptions = Array.from(new Set([normalize(draft.emoji), ...HERO_EMOJI_OPTIONS].filter(Boolean)))
 
   useEffect(() => {
-    setDraft(makeDraft(team))
-    setBannerPreviewUrl('')
-    setSelectedBannerFile(null)
-    setEmojiOpen(false)
-  }, [team])
+    setDraft(baseDraft)
+    setSelectedImageFile(null)
+    setPreviewImageUrl(null)
+    setSaveError('')
+    setSaveSuccess('')
+  }, [baseDraft])
 
   useEffect(() => {
-    let mounted = true
-    setLoadingLinks(true)
-    fetchTeamOverviewLinks(team.id).then((result) => {
-      if (!mounted) return
-      setLinks(result)
-      setDraftLinks(result.map((link) => ({ id: link.id, label: link.label, url: link.url, iconKey: link.icon_key })))
-      setLinksError('')
-    }).catch((error) => {
-      if (!mounted) return
-      setLinksError(error instanceof Error ? error.message : 'link load failed')
-    }).finally(() => {
-      if (mounted) setLoadingLinks(false)
-    })
-    return () => { mounted = false }
-  }, [team.id])
-
-  useEffect(() => {
-    if (!emojiOpen) return
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!emojiRef.current?.contains(event.target as Node)) setEmojiOpen(false)
+    if (!selectedImageFile) {
+      setPreviewImageUrl(null)
+      return
     }
-    window.addEventListener('pointerdown', handlePointerDown)
-    return () => window.removeEventListener('pointerdown', handlePointerDown)
-  }, [emojiOpen])
+
+    const objectUrl = URL.createObjectURL(selectedImageFile)
+    setPreviewImageUrl(objectUrl)
+
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [selectedImageFile])
 
   useEffect(() => {
-    if (!saveSuccess) return
-    const timer = window.setTimeout(() => setSaveSuccess(''), 3200)
-    return () => window.clearTimeout(timer)
-  }, [saveSuccess])
+    if (!isDeleteOpen) {
+      setDeleteConfirmationName('')
+    }
+  }, [isDeleteOpen])
+
+  const leaderName = normalize(leader?.full_name) || normalize(leader?.email) || '팀 리더'
+  const skillNames = useMemo(() => Array.from(new Set(skills.map((skill) => skill.name))).sort(), [skills])
+  const memberCount = members.length
+  const occupancyLabel = `${numberFormatter.format(memberCount)}명 / 최대 ${numberFormatter.format(team.max_members)}명`
+  const heroSummary = normalize(team.summary) || '팀의 목표와 작업 방향을 짧고 분명하게 소개해 주세요.'
+  const description =
+    normalize(team.description) || '아직 팀 상세 설명이 없습니다. 팀이 해결하려는 문제와 작업 방향을 소개해 보세요.'
+  const teamNote = normalize(team.team_note)
+  const editorImageUrl = draft.removeImage ? null : previewImageUrl ?? team.image_url
+  const overviewSections = useMemo(
+    () =>
+      buildStorySections({
+        summary: heroSummary,
+        description,
+        leaderName,
+        skillNames,
+        memberCount,
+        maxMembers: team.max_members,
+        isRecruiting: team.is_recruiting,
+      }),
+    [description, heroSummary, leaderName, memberCount, skillNames, team.is_recruiting, team.max_members],
+  )
+  const isDirty =
+    draft.name !== team.name ||
+    draft.summary !== team.summary ||
+    draft.description !== (team.description ?? '') ||
+    draft.teamNote !== (team.team_note ?? '') ||
+    draft.removeImage ||
+    Boolean(selectedImageFile)
+  const isDeleteConfirmed = deleteConfirmationName.trim() === team.name.trim()
 
   useEffect(() => {
-    if (!bannerPreviewUrl) return
-    return () => URL.revokeObjectURL(bannerPreviewUrl)
-  }, [bannerPreviewUrl])
+    if (!isEditorOpen || !isDirty) return
 
-  const updateDraft = <Key extends keyof Draft>(key: Key, value: Draft[Key]) => setDraft((current) => ({ ...current, [key]: value }))
-  const updateLink = (index: number, patch: Partial<LinkDraft>) => setDraftLinks((current) => current.map((link, currentIndex) => currentIndex === index ? { ...link, ...patch } : link))
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty, isEditorOpen])
 
   const openEditor = () => {
-    setDraft(makeDraft(team))
-    setDraftLinks(links.map((link) => ({ id: link.id, label: link.label, url: link.url, iconKey: link.icon_key })))
-    setBannerPreviewUrl('')
-    setSelectedBannerFile(null)
+    setDraft(baseDraft)
+    setSelectedImageFile(null)
     setSaveError('')
-    setEmojiOpen(false)
-    setActiveEditorTab('design')
+    setSaveSuccess('')
     setIsEditorOpen(true)
   }
 
-  const handleBannerChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
+    event.target.value = ''
+
     if (!file) return
-    const validationError = validateTeamImageFile(file)
-    if (validationError) {
-      setSaveError(validationError)
+
+    const validationMessage = validateTeamImageFile(file)
+    if (validationMessage) {
+      setSaveError(validationMessage)
       return
     }
-    setBannerPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return URL.createObjectURL(file)
-    })
-    setSelectedBannerFile(file)
-    updateDraft('removeBanner', false)
+
     setSaveError('')
+    setSelectedImageFile(file)
+    setDraft((current) => ({ ...current, removeImage: false }))
   }
 
-  async function save() {
-    if (!currentUserId) return setSaveError('login required')
+  const handleSave = async () => {
+    if (!currentUserId) {
+      setSaveError('로그인 후에만 팀 소개를 수정할 수 있습니다.')
+      return
+    }
+
     setIsSaving(true)
     setSaveError('')
+    setSaveSuccess('')
+
     try {
-      const result = await updateTeamOverviewCustomization({ teamId: team.id, userId: currentUserId, overviewThemeKey: draft.themeKey, overviewLayoutVariant: team.overview_layout_variant ?? 'balanced', overviewEmoji: draft.emoji, overviewHeroSubheadline: draft.heroSubheadline, overviewBannerFile: selectedBannerFile, removeOverviewBanner: draft.removeBanner, currentOverviewBannerUrl: team.overview_banner_url, overviewHeroTags: draft.heroTags, overviewAboutTitle: draft.aboutTitle, overviewGoalTitle: draft.goalTitle, overviewGoalBody: draft.goalBody, overviewRecruitingTitle: draft.recruitingTitle, overviewRecruitingBody: draft.recruitingBody, overviewRecruitingHighlights: draft.recruitingHighlights, overviewWorkStyleTitle: draft.workStyleTitle, overviewWorkStyleBody: draft.workStyleBody, overviewWorkStyleItems: draft.workStyleItems, overviewRulesTitle: draft.rulesTitle, overviewRulesBody: draft.rulesBody, overviewRulesItems: draft.rulesItems, overviewLinksTitle: draft.linksTitle, overviewSectionOrder: draft.sectionOrder, showOverviewAbout: draft.showAbout, showOverviewGoal: draft.showGoal, showOverviewRecruiting: draft.showRecruiting, showOverviewWorkStyle: draft.showWorkStyle, showOverviewRules: draft.showRules, showOverviewLinks: draft.showLinks, links: draftLinks.map((link) => ({ id: link.id, label: link.label.trim(), url: link.url.trim(), icon_key: link.iconKey })) })
-      setLinks(result.links)
-      onTeamUpdated({ team: result.team, skills })
+      const result = await updateTeamProfile({
+        teamId: team.id,
+        userId: currentUserId,
+        name: draft.name,
+        summary: draft.summary,
+        description: draft.description,
+        teamNote: draft.teamNote,
+        category: team.category ?? '',
+        maxMembers: team.max_members,
+        isRecruiting: team.is_recruiting,
+        imageFile: selectedImageFile,
+        removeImage: draft.removeImage,
+        currentImageUrl: team.image_url,
+      })
+
+      setDraft(makeDraft(result.team))
+      setSelectedImageFile(null)
+      setSaveSuccess('팀 소개 정보가 저장되었습니다.')
       setIsEditorOpen(false)
-      setSaveSuccess('saved')
+      onTeamUpdated(result)
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'save failed')
+      setSaveError(error instanceof Error ? error.message : '팀 소개 저장에 실패했습니다.')
     } finally {
       setIsSaving(false)
     }
   }
 
-  if (isLoading) return <Card><p className="text-sm text-campus-600">loading...</p></Card>
-  if (errorMessage) return <Card className="border-rose-200 bg-rose-50"><p className="text-sm text-rose-600">{errorMessage}</p></Card>
+  if (isLoading) {
+    return <OverviewSkeleton />
+  }
 
   return (
-    <>
-      <div className={cn('space-y-6 rounded-[32px]', theme.shell)}>
-        {saveSuccess ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">saved</div> : null}
-        <section className="overflow-hidden rounded-[34px] border border-campus-200/70 bg-white shadow-card">
-          <div className="relative min-h-[24rem]">
-            {bannerUrl ? <img src={bannerUrl} alt={`${team.name} banner`} className="absolute inset-0 h-full w-full object-cover" /> : <div className={cn('absolute inset-0 bg-gradient-to-br', theme.accent)} />}
-            <div className={cn('absolute inset-0', theme.overlay)} />
-            <div className="relative flex min-h-[24rem] flex-col justify-between gap-8 px-6 py-6 sm:px-8 sm:py-8">
-              <div className="flex items-start justify-between gap-4"><span className={cn('rounded-full border px-3 py-1 text-xs font-semibold', theme.badge)}>TEAM OVERVIEW</span>{isLeader ? <Button type="button" className="border-white/10 bg-white text-campus-900 shadow-none hover:bg-campus-50" onClick={openEditor}>{KR.customize}</Button> : null}</div>
-              <div className="space-y-3"><p className="text-5xl">{draft.emoji || '\u{1F680}'}</p><h1 className="text-4xl font-semibold text-white sm:text-5xl">{team.name}</h1><p className="max-w-2xl text-base leading-7 text-white/88">{heroSubtitle}</p>{heroTags.length > 0 ? <div className="flex flex-wrap gap-2">{heroTags.map((tag) => <span key={tag} className={cn('rounded-full border px-3 py-1.5 text-sm font-medium', theme.badge)}>{tag}</span>)}</div> : null}</div>
+    <div className="flex flex-col gap-6">
+      {errorMessage ? (
+        <Alert variant="destructive" className="border-rose-200 bg-rose-50/95">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Overview 정보를 불러오지 못했습니다</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {saveSuccess ? (
+        <Alert className="border-emerald-200 bg-emerald-50/95 text-emerald-900" aria-live="polite">
+          <Sparkles aria-hidden="true" />
+          <AlertTitle>저장이 완료되었습니다</AlertTitle>
+          <AlertDescription className="text-emerald-800">{saveSuccess}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {deleteErrorMessage ? (
+        <Alert variant="destructive" className="border-rose-200 bg-rose-50/95">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>팀 삭제를 완료하지 못했습니다</AlertTitle>
+          <AlertDescription>{deleteErrorMessage}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <UiCard className="relative overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(245,249,255,0.98),rgba(255,255,255,0.97)_52%,rgba(245,248,252,0.98))] shadow-[0_34px_90px_-48px_rgba(15,23,42,0.38)]">
+        <CardContent className="relative px-0 py-0">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="absolute -left-20 top-0 size-72 rounded-full bg-brand-200/35 blur-3xl" />
+            <div className="absolute right-[-4rem] top-10 size-64 rounded-full bg-sky-200/35 blur-3xl" />
+            <div className="absolute bottom-[-6rem] left-1/3 h-44 w-80 rounded-full bg-cyan-100/35 blur-3xl" />
+          </div>
+
+          <div className="relative z-10 flex flex-col gap-6 px-5 py-5 lg:px-7 lg:py-7">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <UiBadge
+                  variant="outline"
+                  className="h-8 rounded-full border-brand-200/90 bg-white/80 px-3.5 text-[0.74rem] font-semibold text-brand-700"
+                >
+                  팀 소개
+                </UiBadge>
+                <UiBadge
+                  className={cn(
+                    'h-8 rounded-full border px-3.5 text-[0.74rem] font-semibold',
+                    team.is_recruiting
+                      ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+                      : 'border-amber-200 bg-amber-100 text-amber-800',
+                  )}
+                >
+                  {team.is_recruiting ? '모집 중' : '모집 마감'}
+                </UiBadge>
+                {isLeader ? (
+                  <UiBadge
+                    variant="outline"
+                    className="h-8 rounded-full border-slate-200 bg-slate-100/90 px-3.5 text-[0.74rem] font-semibold text-slate-700"
+                  >
+                    <Crown aria-hidden="true" />
+                    리더 관리 가능
+                  </UiBadge>
+                ) : null}
+              </div>
+
+              {isLeader ? (
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  <UiButton
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="min-h-11 rounded-2xl px-5"
+                    onClick={openEditor}
+                  >
+                    <PencilLine data-icon="inline-start" aria-hidden="true" />
+                    소개 편집
+                  </UiButton>
+                  <UiButton
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="min-h-11 rounded-2xl border-rose-200 bg-rose-50/90 px-5 text-rose-700 hover:bg-rose-100 hover:text-rose-700"
+                    onClick={() => setIsDeleteOpen(true)}
+                  >
+                    <Trash2 data-icon="inline-start" aria-hidden="true" />
+                    팀 삭제
+                  </UiButton>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold tracking-[0.24em] text-brand-600">TEAM OVERVIEW</p>
+              <h1 className="mt-3 max-w-4xl break-keep text-[2rem] font-semibold leading-[1.16] tracking-[-0.05em] text-slate-950 sm:text-[2.45rem] lg:text-[2.8rem]">
+                {team.name}
+              </h1>
+              <p className="mt-4 max-w-3xl break-keep text-[15px] font-medium leading-7 text-slate-600 sm:text-base">
+                {heroSummary}
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/78 p-3 shadow-[0_28px_72px_-42px_rgba(15,23,42,0.45)] backdrop-blur">
+              <div className="relative overflow-hidden rounded-[1.35rem] border border-brand-100/70 bg-[linear-gradient(160deg,rgba(240,247,255,0.96),rgba(255,255,255,0.92))]">
+                {team.image_url ? (
+                  <img src={team.image_url} alt={`${team.name} 대표 이미지`} className="aspect-[16/7] w-full object-cover" />
+                ) : (
+                  <div className="flex aspect-[16/7] w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.14),transparent_52%),linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-6 text-center">
+                    <div className="flex size-16 items-center justify-center rounded-3xl bg-white/90 text-brand-700 shadow-sm">
+                      <ImageOff className="size-7" aria-hidden="true" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-900">대표 이미지가 아직 없습니다</p>
+                      <p className="break-keep text-xs leading-5 text-slate-500">
+                        이미지가 없어도 안정적으로 보이도록 fallback 화면을 보여줍니다.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <MetaCard icon={BriefcaseBusiness} label="카테고리" value={team.category ?? '미정'} />
+              <MetaCard icon={Users} label="인원 현황" value={occupancyLabel} />
+              <MetaCard icon={Crown} label="운영 리더" value={leaderName} />
             </div>
           </div>
-        </section>
-        <div className={layoutClass(team.overview_layout_variant)}>
-          {draft.showAbout ? <SectionCard eyebrow={KR.intro} title={draft.aboutTitle} body={team.description ?? ''} theme={theme} /> : null}
-          {draft.showGoal ? <SectionCard eyebrow={KR.goal} title={draft.goalTitle} body={draft.goalBody} theme={theme} /> : null}
-          {draft.showRecruiting ? <SectionCard eyebrow={KR.recruiting} title={draft.recruitingTitle} body={draft.recruitingBody} items={draft.recruitingHighlights} theme={theme} /> : null}
-          {draft.showWorkStyle ? <SectionCard eyebrow={KR.workStyle} title={draft.workStyleTitle} body={draft.workStyleBody} items={draft.workStyleItems} theme={theme} /> : null}
-          {draft.showRules ? <SectionCard eyebrow={KR.rules} title={draft.rulesTitle} body={draft.rulesBody} items={draft.rulesItems} theme={theme} /> : null}
-          {draft.showLinks ? <Card className={cn('space-y-4 rounded-[28px] shadow-card md:col-span-2', theme.card)}><div className="space-y-2"><p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">Links</p><h3 className="text-2xl font-semibold tracking-tight text-campus-900">{draft.linksTitle}</h3></div>{loadingLinks ? <p className="text-sm text-campus-500">loading links...</p> : null}{linksError ? <p className="text-sm text-rose-600">{linksError}</p> : null}<div className="grid gap-3">{links.filter((link) => isSafeExternalUrl(link.url)).map((link) => <a key={link.id} href={link.url} target="_blank" rel="noreferrer noopener" className="block rounded-[24px] border border-campus-200 bg-white/90 px-4 py-4"><div className="flex items-center justify-between gap-4"><div className="space-y-1"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-campus-500">{OVERVIEW_ICON_LABELS[link.icon_key]}</p><p className="text-base font-semibold text-campus-900">{link.label}</p></div><Badge variant="neutral">Open</Badge></div></a>)}</div></Card> : null}
-        </div>
-        {isLeader ? <Card className={cn('space-y-4 rounded-[28px] shadow-card', theme.card)}><div className="flex flex-col gap-3 sm:flex-row"><Button type="button" className={cn('bg-gradient-to-r text-white shadow-none', theme.accent)} onClick={openEditor}>{KR.customize}</Button><Button type="button" variant="ghost" onClick={onOpenMembers}>{KR.members}</Button><Button type="button" variant="ghost" onClick={() => setDeleteOpen(true)} disabled={isDeletingTeam}>{isDeletingTeam ? '...' : KR.delete}</Button></div>{deleteErrorMessage ? <p className="text-sm text-rose-600">{deleteErrorMessage}</p> : null}</Card> : null}
+        </CardContent>
+      </UiCard>
+
+      <UiCard className="rounded-[1.75rem] border-slate-200/80 shadow-[0_26px_70px_-48px_rgba(15,23,42,0.42)]">
+        <CardHeader className="gap-2 pb-2">
+          <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">Team Story</CardTitle>
+          <CardDescription className="break-keep text-sm leading-6 text-slate-500">
+            현재 저장된 `summary`와 `description`을 중심으로 팀의 정체성과 운영 맥락이 자연스럽게 읽히도록 재구성했습니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-4">
+            {overviewSections.map((section) => (
+              <StoryCard key={section.title} section={section} />
+            ))}
+          </div>
+        </CardContent>
+      </UiCard>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <UiCard className="rounded-[1.75rem] border-slate-200/80 shadow-[0_24px_64px_-48px_rgba(15,23,42,0.4)]">
+          <CardHeader className="gap-2 pb-2">
+            <CardTitle className="text-lg font-semibold tracking-[-0.03em] text-slate-950">기술 스택</CardTitle>
+            <CardDescription className="break-keep text-sm leading-6 text-slate-500">
+              현재 연결된 `team_skills` 기반의 기술만 사용해 팀의 작업 기반을 보여줍니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {skillNames.length > 0 ? (
+              <>
+                <div className="flex flex-wrap gap-2.5">
+                  {skillNames.map((skill) => (
+                    <UiBadge
+                      key={skill}
+                      variant="secondary"
+                      className="h-9 rounded-full bg-brand-50 px-3.5 text-[0.8rem] font-medium text-brand-700"
+                    >
+                      {skill}
+                    </UiBadge>
+                  ))}
+                </div>
+                <div className="rounded-[1.4rem] border border-slate-200/80 bg-slate-50/80 px-4 py-4">
+                  <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">현재 연결된 기술 수</p>
+                  <p className="mt-1 text-base font-semibold text-slate-950">
+                    총 {numberFormatter.format(skillNames.length)}개 기술이 등록되어 있습니다.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-sm leading-6 text-slate-500">
+                아직 등록된 기술 스택이 없습니다. 데이터가 비어 있어도 레이아웃이 무너지지 않도록 안내 문구와 여백을 유지했습니다.
+              </div>
+            )}
+          </CardContent>
+        </UiCard>
+
+        <UiCard className="rounded-[1.75rem] border-slate-200/80 shadow-[0_24px_64px_-48px_rgba(15,23,42,0.4)]">
+          <CardHeader className="gap-2 pb-2">
+            <CardTitle className="text-lg font-semibold tracking-[-0.03em] text-slate-950">팀 메모</CardTitle>
+            <CardDescription className="break-keep text-sm leading-6 text-slate-500">
+              공지나 운영 메모처럼 팀이 계속 참고할 내용을 담는 보조 정보 영역입니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {teamNote ? (
+              <div className="rounded-[1.5rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.88))] px-4 py-4">
+                <p className="whitespace-pre-wrap break-keep text-sm leading-7 text-slate-700">{teamNote}</p>
+              </div>
+            ) : (
+              <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-sm leading-6 text-slate-500">
+                아직 등록된 팀 메모가 없습니다. 팀 운영 공지나 짧은 안내가 필요하다면 소개 편집에서 바로 추가할 수 있습니다.
+              </div>
+            )}
+          </CardContent>
+        </UiCard>
       </div>
-      {isEditorOpen ? <div className="fixed inset-0 z-50 bg-campus-900/60 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSaving) setIsEditorOpen(false) }}><div className="ml-auto flex h-full w-full max-w-[1180px] flex-col bg-white shadow-2xl"><div className="border-b border-campus-200 px-5 py-4 sm:px-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-campus-500">{KR.editor}</p></div><div className="flex gap-2"><Button type="button" variant="ghost" onClick={() => setIsEditorOpen(false)}>close</Button><Button type="button" onClick={() => void save()} disabled={isSaving}>{isSaving ? '...' : KR.save}</Button></div></div></div><div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,0.95fr),minmax(420px,0.85fr)]"><div className="flex min-h-0 flex-col border-r border-campus-200"><div className="border-b border-campus-200 px-5 py-4 sm:px-6"><div className="flex gap-2 overflow-x-auto">{TABS.map((tab) => <button key={tab.key} type="button" onClick={() => setActiveEditorTab(tab.key)} className={cn('box-border inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full border px-4 text-sm font-medium leading-none transition', activeEditorTab === tab.key ? 'border-campus-900 bg-campus-900 text-white shadow-[0_10px_24px_rgba(26,34,51,0.12)]' : 'border-campus-200 bg-white text-campus-600 hover:bg-campus-50')}>{tab.label}</button>)}</div></div><div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">{saveError ? <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">{saveError}</div> : null}
-        {activeEditorTab === 'design' ? <div className="space-y-6"><div className="grid gap-2 md:grid-cols-2">{THEMES.map((themeOption) => <button key={themeOption.key} type="button" onClick={() => updateDraft('themeKey', themeOption.key)} className={cn('rounded-[22px] border px-4 py-3 text-left transition', draft.themeKey === themeOption.key ? 'border-campus-900 bg-campus-900 text-white' : 'border-campus-200 bg-white text-campus-700 hover:border-campus-300')}>{themeOption.label}</button>)}</div><div className="grid gap-4 md:grid-cols-2"><div ref={emojiRef} className="relative space-y-2"><span className="text-sm font-medium text-campus-700">Emoji</span><button type="button" onClick={() => setEmojiOpen((current) => !current)} className="flex min-h-[3rem] w-full items-center justify-between rounded-2xl border border-campus-200 bg-white px-4 py-3 text-left text-sm text-campus-900"><span className="flex items-center gap-3"><span className="text-2xl">{draft.emoji || '\u{1F680}'}</span><span>{draft.emoji ? '\uC120\uD0DD\uB428' : '\uC774\uBAA8\uC9C0 \uC120\uD0DD'}</span></span></button>{emojiOpen ? <div className="absolute left-0 top-full z-20 mt-2 w-full rounded-[24px] border border-campus-200 bg-white p-3 shadow-card"><div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{emojiOptions.map((emojiOption) => <button key={emojiOption} type="button" onClick={() => { updateDraft('emoji', emojiOption); setEmojiOpen(false) }} className={cn('flex h-11 items-center justify-center rounded-2xl border text-2xl transition', draft.emoji === emojiOption ? 'border-campus-900 bg-campus-900 text-white' : 'border-campus-200 bg-campus-50 hover:border-campus-300 hover:bg-white')}>{emojiOption}</button>)}</div></div> : null}</div><label className="space-y-2"><span className="text-sm font-medium text-campus-700">{KR.teamIntro}</span><input value={draft.heroSubheadline} onChange={(event) => updateDraft('heroSubheadline', event.target.value)} placeholder="\uD300\uC744 \uD55C\uC904\uB85C \uC18C\uAC1C\uD558\uB294 \uBB38\uAD6C\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694" className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /></label></div><div className="flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-campus-200 bg-white px-4 py-2.5 text-sm font-medium text-campus-700">banner<input type="file" accept="image/*" className="hidden" onChange={handleBannerChange} /></label><Button type="button" variant="ghost" onClick={() => { setSelectedBannerFile(null); setBannerPreviewUrl(''); updateDraft('removeBanner', true) }}>remove</Button><Button type="button" variant="ghost" onClick={() => { setSelectedBannerFile(null); setBannerPreviewUrl(''); updateDraft('removeBanner', false) }}>reset</Button></div>{TEAM_IMAGE_STORAGE_ENABLED ? null : <p className="text-xs text-campus-500">storage disabled</p>}<ListBlock label="Hero tags" items={draft.heroTags} onChange={(items) => updateDraft('heroTags', items)} /></div> : null}
-        {activeEditorTab === 'sections' ? <div className="space-y-6"><SectionEditor title={KR.intro} checked={draft.showAbout} onCheckedChange={(value) => updateDraft('showAbout', value)}><input value={draft.aboutTitle} onChange={(event) => updateDraft('aboutTitle', event.target.value)} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /></SectionEditor><SectionEditor title={KR.goal} checked={draft.showGoal} onCheckedChange={(value) => updateDraft('showGoal', value)}><input value={draft.goalTitle} onChange={(event) => updateDraft('goalTitle', event.target.value)} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><textarea rows={4} value={draft.goalBody} onChange={(event) => updateDraft('goalBody', event.target.value)} className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /></SectionEditor><SectionEditor title={KR.recruiting} checked={draft.showRecruiting} onCheckedChange={(value) => updateDraft('showRecruiting', value)}><input value={draft.recruitingTitle} onChange={(event) => updateDraft('recruitingTitle', event.target.value)} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><textarea rows={4} value={draft.recruitingBody} onChange={(event) => updateDraft('recruitingBody', event.target.value)} className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><ListBlock label="Recruiting highlights" items={draft.recruitingHighlights} onChange={(items) => updateDraft('recruitingHighlights', items)} /></SectionEditor><SectionEditor title={KR.workStyle} checked={draft.showWorkStyle} onCheckedChange={(value) => updateDraft('showWorkStyle', value)}><input value={draft.workStyleTitle} onChange={(event) => updateDraft('workStyleTitle', event.target.value)} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><textarea rows={4} value={draft.workStyleBody} onChange={(event) => updateDraft('workStyleBody', event.target.value)} className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><ListBlock label="Work style list" items={draft.workStyleItems} onChange={(items) => updateDraft('workStyleItems', items)} /></SectionEditor><SectionEditor title={KR.rules} checked={draft.showRules} onCheckedChange={(value) => updateDraft('showRules', value)}><input value={draft.rulesTitle} onChange={(event) => updateDraft('rulesTitle', event.target.value)} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><textarea rows={4} value={draft.rulesBody} onChange={(event) => updateDraft('rulesBody', event.target.value)} className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><ListBlock label="Rules list" items={draft.rulesItems} onChange={(items) => updateDraft('rulesItems', items)} /></SectionEditor><SectionEditor title={KR.links} checked={draft.showLinks} onCheckedChange={(value) => updateDraft('showLinks', value)}><input value={draft.linksTitle} onChange={(event) => updateDraft('linksTitle', event.target.value)} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /></SectionEditor></div> : null}
-        {activeEditorTab === 'links' ? <div className="space-y-5"><div className="flex items-center justify-between gap-4"><p className="text-sm font-medium text-campus-800">Links</p><Button type="button" variant="ghost" onClick={() => setDraftLinks((current) => [...current, { label: '', url: '', iconKey: 'link' }])}>+</Button></div><div className="space-y-3">{draftLinks.map((link, index) => <div key={`${link.id ?? 'new'}-${index}`} className="space-y-3 rounded-[28px] border border-campus-200 bg-campus-50/60 p-5"><div className="flex gap-2"><input value={link.label} onChange={(event) => updateLink(index, { label: event.target.value })} className="min-h-[3rem] flex-1 rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /><select value={link.iconKey} onChange={(event) => updateLink(index, { iconKey: event.target.value as TeamOverviewLinkIconKey })} className="min-h-[3rem] rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm">{LINK_ICON_OPTIONS.map((iconKey) => <option key={iconKey} value={iconKey}>{OVERVIEW_ICON_LABELS[iconKey]}</option>)}</select></div><input value={link.url} onChange={(event) => updateLink(index, { url: event.target.value })} className="min-h-[3rem] w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm" /></div>)}</div></div> : null}</div></div><div className="min-h-0 overflow-y-auto bg-campus-50/60 p-5 sm:p-6"><Card className={cn('space-y-4 rounded-[28px] shadow-card', theme.card)}><h4 className="text-xl font-semibold tracking-tight text-campus-900">Preview</h4><p className="text-4xl">{draft.emoji || '\u{1F680}'}</p><p className="text-sm text-campus-600">{heroSubtitle}</p><div className="flex flex-wrap gap-2">{heroTags.map((tag) => <span key={tag} className="rounded-full border border-campus-200 px-3 py-1 text-xs text-campus-700">{tag}</span>)}</div></Card></div></div></div></div> : null}
-      <TeamDeleteConfirmModal open={deleteOpen} teamName={team.name} isSubmitting={isDeletingTeam} errorMessage={deleteErrorMessage} onClose={() => setDeleteOpen(false)} onConfirm={onDeleteTeam} />
-    </>
+
+      <Sheet open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto bg-white sm:max-w-xl">
+          <SheetHeader className="text-left">
+            <SheetTitle>팀 소개 편집</SheetTitle>
+            <SheetDescription className="break-keep leading-6">
+              현재 DB 필드 안에서 대표 이미지, 팀 이름, 한줄 소개, 상세 설명, 팀 메모만 간단하게 수정할 수 있습니다.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-2 flex flex-col gap-5 px-4 pb-2">
+            {saveError ? (
+              <Alert variant="destructive" className="border-rose-200 bg-rose-50/95">
+                <AlertCircle aria-hidden="true" />
+                <AlertTitle>저장 전에 확인해 주세요</AlertTitle>
+                <AlertDescription>{saveError}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="rounded-[1.5rem] border border-slate-200/80 bg-slate-50/80 p-4">
+              <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">미리보기</p>
+              <p className="mt-2 break-keep text-lg font-semibold leading-7 text-slate-950">
+                {normalize(draft.summary) || '한줄 소개가 비어 있으면 기본 안내 문구가 노출됩니다.'}
+              </p>
+              <p className="mt-2 break-keep text-sm leading-6 text-slate-500">
+                저장 시 기존 `teams` 테이블의 이름, 소개, 설명, 이미지, 팀 메모 필드만 업데이트됩니다.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label htmlFor="team-overview-name" className="text-sm font-semibold text-slate-900">
+                팀 이름
+              </label>
+              <Input
+                id="team-overview-name"
+                className="min-h-11 rounded-2xl"
+                value={draft.name}
+                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                maxLength={60}
+                placeholder="팀 이름을 입력해 주세요"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label htmlFor="team-overview-summary" className="text-sm font-semibold text-slate-900">
+                한줄 소개
+              </label>
+              <Textarea
+                id="team-overview-summary"
+                className="min-h-[96px] rounded-2xl leading-7"
+                value={draft.summary}
+                onChange={(event) => setDraft((current) => ({ ...current, summary: event.target.value }))}
+                maxLength={180}
+                rows={3}
+                placeholder="이 팀이 어떤 목표를 가진 팀인지 짧게 소개해 주세요"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label htmlFor="team-overview-description" className="text-sm font-semibold text-slate-900">
+                상세 설명
+              </label>
+              <Textarea
+                id="team-overview-description"
+                className="min-h-[180px] rounded-2xl leading-7"
+                value={draft.description}
+                onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+                rows={8}
+                placeholder="팀이 해결하려는 문제, 진행 방식, 현재 방향을 조금 더 자세히 작성해 주세요"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label htmlFor="team-overview-note" className="text-sm font-semibold text-slate-900">
+                팀 운영 메모
+              </label>
+              <Textarea
+                id="team-overview-note"
+                className="min-h-[128px] rounded-2xl leading-7"
+                value={draft.teamNote}
+                onChange={(event) => setDraft((current) => ({ ...current, teamNote: event.target.value }))}
+                rows={5}
+                placeholder="공지, 참고 메모, 운영 원칙처럼 팀 안에서 자주 공유할 내용을 적어둘 수 있습니다"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">대표 이미지</p>
+                  <p className="break-keep text-sm leading-6 text-slate-500">
+                    {TEAM_IMAGE_STORAGE_ENABLED
+                      ? 'JPG, PNG, WEBP 형식의 이미지를 업로드할 수 있습니다.'
+                      : '현재는 이미지 스토리지가 비활성화되어 있습니다.'}
+                  </p>
+                </div>
+                <label
+                  className={cn(
+                    'inline-flex min-h-11 cursor-pointer items-center rounded-2xl border px-4 text-sm font-semibold transition-colors',
+                    TEAM_IMAGE_STORAGE_ENABLED
+                      ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'
+                      : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400',
+                  )}
+                >
+                  <Upload data-icon="inline-start" aria-hidden="true" />
+                  이미지 선택
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={handleImageChange}
+                    disabled={!TEAM_IMAGE_STORAGE_ENABLED}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-slate-200/80 bg-slate-50/80 p-4">
+                {editorImageUrl ? (
+                  <img
+                    src={editorImageUrl}
+                    alt={`${team.name} 대표 이미지 미리보기`}
+                    className="aspect-[4/3] w-full rounded-[1.15rem] object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-[4/3] w-full items-center justify-center rounded-[1.15rem] border border-dashed border-slate-200 bg-white px-6 text-center text-sm leading-6 text-slate-500">
+                    아직 등록된 대표 이미지가 없습니다.
+                  </div>
+                )}
+              </div>
+
+              {(team.image_url || selectedImageFile) && TEAM_IMAGE_STORAGE_ENABLED ? (
+                <UiButton
+                  type="button"
+                  variant="outline"
+                  className="w-fit rounded-2xl"
+                  onClick={() => {
+                    setSelectedImageFile(null)
+                    setDraft((current) => ({ ...current, removeImage: true }))
+                  }}
+                >
+                  이미지 제거
+                </UiButton>
+              ) : null}
+            </div>
+          </div>
+
+          <SheetFooter className="mt-6 flex-col gap-2 sm:flex-row sm:justify-between">
+            <UiButton
+              type="button"
+              variant="outline"
+              className="rounded-2xl"
+              onClick={() => {
+                setDraft(baseDraft)
+                setSelectedImageFile(null)
+                setSaveError('')
+                setSaveSuccess('')
+              }}
+              disabled={isSaving}
+            >
+              초기화
+            </UiButton>
+            <UiButton type="button" className="rounded-2xl" onClick={handleSave} disabled={isSaving || !isDirty}>
+              {isSaving ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : null}
+              저장하기
+            </UiButton>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>팀을 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription className="break-keep leading-6">
+              팀 삭제는 되돌릴 수 없습니다. 확인을 위해 아래 입력칸에 <br/> 팀 이름
+              <span className="mx-1 font-semibold text-foreground">{team.name}</span>
+              을 정확히 입력해 주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="px-6 pb-2">
+            <label htmlFor="team-delete-confirmation" className="mb-2 block text-sm font-semibold text-slate-900">
+              팀 이름 확인
+            </label>
+            <Input
+              id="team-delete-confirmation"
+              value={deleteConfirmationName}
+              onChange={(event) => setDeleteConfirmationName(event.target.value)}
+              placeholder={team.name}
+              className="min-h-11 rounded-2xl"
+              autoComplete="off"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingTeam}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void onDeleteTeam()
+              }}
+              disabled={isDeletingTeam || !isDeleteConfirmed}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              {isDeletingTeam ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : null}
+              팀 삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }

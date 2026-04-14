@@ -1,8 +1,9 @@
-import type { EditableProfileForm, SelectedSkill } from '../types'
+import type { EditableProfileProject, EditableProfileForm, SelectedSkill } from '../types'
 
 interface ProfileEditDraft {
   form: EditableProfileForm
   selectedSkills: SelectedSkill[]
+  projects: EditableProfileProject[]
   updatedAt: string
 }
 
@@ -12,7 +13,7 @@ function isValidDraft(value: unknown): value is ProfileEditDraft {
   }
 
   const draft = value as Partial<ProfileEditDraft>
-  return Boolean(draft.form && Array.isArray(draft.selectedSkills))
+  return Boolean(draft.form && Array.isArray(draft.selectedSkills) && Array.isArray(draft.projects))
 }
 
 export function getProfileEditDraftKey(userId: string) {
@@ -36,11 +37,12 @@ export function loadProfileEditDraft(key: string): ProfileEditDraft | null {
 
 export function saveProfileEditDraft(
   key: string,
-  payload: Pick<ProfileEditDraft, 'form' | 'selectedSkills'>,
+  payload: Pick<ProfileEditDraft, 'form' | 'selectedSkills' | 'projects'>,
 ) {
   const draft: ProfileEditDraft = {
     form: payload.form,
     selectedSkills: payload.selectedSkills,
+    projects: payload.projects,
     updatedAt: new Date().toISOString(),
   }
 
