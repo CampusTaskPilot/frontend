@@ -27,6 +27,8 @@ import type {
 
 export const TEAM_CREATION_LIMIT = 3
 export const TEAM_CREATION_LIMIT_MESSAGE = '팀은 최대 3개까지 생성할 수 있습니다.'
+export const TEAM_SUMMARY_MAX_LENGTH = 30
+export const TEAM_SUMMARY_LENGTH_MESSAGE = `한 줄 소개는 ${TEAM_SUMMARY_MAX_LENGTH}자 이내로 입력해 주세요.`
 const teamsUpdatedEvent = 'taskpilot:teams-updated'
 
 const TEAM_SELECT_COLUMNS =
@@ -194,9 +196,17 @@ export function isTeamCreationLimitError(error: unknown) {
   )
 }
 
+export function isTeamSummaryLengthError(error: unknown) {
+  return getErrorMessage(error).toLowerCase().includes('teams_summary_length')
+}
+
 export function getTeamCreationErrorMessage(error: unknown) {
   if (isTeamCreationLimitError(error)) {
     return TEAM_CREATION_LIMIT_MESSAGE
+  }
+
+  if (isTeamSummaryLengthError(error)) {
+    return TEAM_SUMMARY_LENGTH_MESSAGE
   }
 
   return describeError(error, '팀 생성에 실패했습니다.')
@@ -524,7 +534,7 @@ export async function createTeamWithRelations(params: {
     .single()
 
   if (teamError) {
-    throw teamError
+    throw new Error(getTeamCreationErrorMessage(teamError))
   }
 
   const teamId = String((createdTeam as Record<string, unknown>).id ?? '')
@@ -1095,6 +1105,9 @@ export async function updateTeamProfile(params: {
   if (teamError) {
     if (uploadedImagePath) {
       await removeTeamImageByPath(uploadedImagePath).catch(() => undefined)
+    }
+    if (isTeamSummaryLengthError(teamError)) {
+      throw new Error(TEAM_SUMMARY_LENGTH_MESSAGE)
     }
     throw new Error('Failed to update the team profile: ' + describeError(teamError, 'The update was rejected by RLS.'))
   }

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import type { ProfileRecord } from '../types'
+import { ProfileAvatar } from './ProfileAvatar'
 
 interface ProfileHeaderLink {
   label: string
@@ -44,19 +45,14 @@ export function ProfileHeader({
         <div className="space-y-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 items-start gap-4 sm:gap-5">
-              <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] border border-white/80 bg-white shadow-sm sm:h-28 sm:w-28">
-                {profile?.profile_image_url ? (
-                  <img
-                    src={profile.profile_image_url}
-                    alt={`${displayName} 프로필 이미지`}
-                    width={112}
-                    height={112}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-medium text-campus-500">이미지 없음</span>
-                )}
-              </div>
+              <ProfileAvatar
+                src={profile?.profile_image_url}
+                name={displayName}
+                email={displayEmail}
+                alt={`${displayName} profile image`}
+                className="h-24 w-24 shrink-0 border-white/80 bg-white shadow-sm sm:h-28 sm:w-28"
+                fallbackClassName="text-3xl sm:text-4xl"
+              />
 
               <div className="min-w-0 space-y-3">
                 <div className="space-y-2">

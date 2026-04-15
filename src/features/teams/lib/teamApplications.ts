@@ -1,6 +1,7 @@
 import { ApiError, apiFetch } from '../../../lib/api'
 import { supabase } from '../../../lib/supabase'
 import type {
+  TeamApplicationMutationResult,
   TeamApplicationAnalysisLookupRecord,
   TeamApplicationAnalysisSummary,
   TeamApplicationSummaryRecord,
@@ -154,6 +155,23 @@ function mapApplicationSummary(value: unknown): TeamApplicationSummaryRecord {
   }
 }
 
+function mapApplicationMutationResult(value: unknown): TeamApplicationMutationResult {
+  const row = (value ?? {}) as Record<string, unknown>
+
+  return {
+    ok: Boolean(row.ok),
+    action: String(row.action ?? 'rejected') as TeamApplicationMutationResult['action'],
+    application_id: String(row.application_id ?? ''),
+    team_id: String(row.team_id ?? ''),
+    applicant_user_id: String(row.applicant_user_id ?? ''),
+    status: String(row.status ?? 'pending') as TeamApplicationMutationResult['status'],
+    reviewed_at: typeof row.reviewed_at === 'string' ? row.reviewed_at : null,
+    reviewed_by_user_id: typeof row.reviewed_by_user_id === 'string' ? row.reviewed_by_user_id : null,
+    review_note: typeof row.review_note === 'string' ? row.review_note : null,
+    message: typeof row.message === 'string' && row.message.trim() ? row.message : 'Application updated.',
+  }
+}
+
 function normalizeListError(error: unknown, fallback: string) {
   throw new Error(extractSupabaseErrorMessage(error, fallback))
 }
@@ -298,22 +316,41 @@ export async function fetchTeamApplicationAnalysis(params: {
   }
 }
 
-export function updateTeamApplicationStatus(params: {
+async function runTeamApplicationReviewRpc(
+  functionName: 'accept_team_application' | 'reject_team_application',
+  params: {
+    applicationId: string
+    reviewNote?: string
+  },
+) {
+  const { data, error } = await supabase.rpc(functionName, {
+    p_application_id: params.applicationId,
+    p_review_note: params.reviewNote?.trim() || null,
+  })
+
+  if (error) {
+    throw new TeamApplicationApiError(
+      extractSupabaseErrorMessage(error, 'Failed to update the application status.'),
+      400,
+      error,
+    )
+  }
+
+  return mapApplicationMutationResult(data)
+}
+
+export function acceptTeamApplication(params: {
   applicationId: string
-  accessToken: string
-  status: 'accepted' | 'rejected' | 'withdrawn'
   reviewNote?: string
 }) {
-  return wrapTeamApplicationApiRequest(async () => {
-    return apiFetch<TeamApplicationSummaryRecord>(`/applications/${params.applicationId}/status`, {
-      method: 'PATCH',
-      accessToken: params.accessToken,
-      body: JSON.stringify({
-        status: params.status,
-        review_note: params.reviewNote?.trim() || null,
-      }),
-    })
-  })
+  return runTeamApplicationReviewRpc('accept_team_application', params)
+}
+
+export function rejectTeamApplication(params: {
+  applicationId: string
+  reviewNote?: string
+}) {
+  return runTeamApplicationReviewRpc('reject_team_application', params)
 }
 
 export function requestTeamApplicationAnalysis(params: {

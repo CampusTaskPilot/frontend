@@ -360,7 +360,7 @@ export function TeamApplicationsTab({
           <Badge variant="neutral">총 {applications.length}건</Badge>
         </div>
         <p className="text-sm leading-6 text-campus-600">
-          탭에 들어오면 신청 목록만 읽어옵니다. AI 분석은 직접 확인할 때만 다시 조회하거나 시작합니다.
+         지원자를 확인한 뒤, 필요 시 AI 분석을 확인해보세요.
         </p>
         {(errorMessage || actionMessage) && (
           <div

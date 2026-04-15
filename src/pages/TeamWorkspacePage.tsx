@@ -19,18 +19,26 @@ import {
 } from '../features/teams/components/TeamTabs'
 import { TeamTasksTab } from '../features/teams/components/TeamTasksTab'
 import {
+  acceptTeamApplication,
   TeamApplicationApiError,
   fetchTeamApplicationAnalysis,
   fetchMyTeamApplication,
   fetchTeamApplications,
+  rejectTeamApplication,
   requestTeamApplicationAnalysis,
   submitTeamApplication,
-  updateTeamApplicationStatus,
 } from '../features/teams/lib/teamApplications'
 import { TeamMemberManagementApiError, removeTeamMember } from '../features/teams/lib/teamMemberManagement'
-import { deleteTeam, fetchTeamMembers, fetchTeamSkillTags, fetchTeamWorkspaceBase } from '../features/teams/lib/teams'
+import {
+  deleteTeam,
+  fetchTeamMembers,
+  fetchTeamSkillTags,
+  fetchTeamWorkspaceBase,
+  notifyTeamsUpdated,
+} from '../features/teams/lib/teams'
 import { supabase } from '../lib/supabase'
 import type {
+  TeamApplicationMutationResult,
   TeamApplicationAnalysisLookupRecord,
   TeamApplicationSummaryRecord,
   TeamMemberRole,
@@ -412,6 +420,33 @@ export function TeamWorkspacePage() {
     setMembersLoaded(true)
   }
 
+  function applyApplicationMutationResult(result: TeamApplicationMutationResult) {
+    setApplications((current) =>
+      current.map((item) =>
+        item.id === result.application_id
+          ? {
+              ...item,
+              status: result.status,
+              reviewed_at: result.reviewed_at,
+              reviewed_by_user_id: result.reviewed_by_user_id,
+              review_note: result.review_note,
+            }
+          : item,
+      ),
+    )
+    setMyApplication((current) =>
+      current?.id === result.application_id
+        ? {
+            ...current,
+            status: result.status,
+            reviewed_at: result.reviewed_at,
+            reviewed_by_user_id: result.reviewed_by_user_id,
+            review_note: result.review_note,
+          }
+        : current,
+    )
+  }
+
   function applyApplicationSummaryUpdate(updated: TeamApplicationSummaryRecord) {
     setApplications((current) => current.map((item) => (item.id === updated.id ? updated : item)))
     setMyApplication((current) => (current?.id === updated.id ? updated : current))
@@ -505,7 +540,7 @@ export function TeamWorkspacePage() {
         applicantMessage: message,
       })
       setMyApplication(application)
-      setApplicationFeedback('신청이 바로 저장되었습니다. AI 분석은 백그라운드에서 이어집니다.')
+      setApplicationFeedback('신청이 바로 저장되었습니다.')
 
       if (session?.access_token) {
         void requestTeamApplicationAnalysis({
@@ -521,12 +556,12 @@ export function TeamWorkspacePage() {
         setApplicationError(error.message)
         return
       }
-      setApplicationError(error instanceof Error ? error.message : '팀 신청에 실패했습니다.')
+      setApplicationError(error instanceof Error ? error.message : 'Failed to submit the team application.')
     }
   }
 
   async function handleUpdateApplicationStatus(application: TeamApplicationSummaryRecord, statusValue: 'accepted' | 'rejected') {
-    if (!session?.access_token || !teamId) {
+    if (!teamId) {
       return
     }
 
@@ -535,18 +570,38 @@ export function TeamWorkspacePage() {
     setApplicationFeedback('')
 
     try {
-      const updated = await updateTeamApplicationStatus({
-        applicationId: application.id,
-        accessToken: session.access_token,
-        status: statusValue,
-      })
-      applyApplicationSummaryUpdate(updated)
-      setApplicationFeedback(statusValue === 'accepted' ? '지원자를 팀에 수락했습니다.' : '지원을 거절 처리했습니다.')
+      const updated =
+        statusValue === 'accepted'
+          ? await acceptTeamApplication({
+              applicationId: application.id,
+            })
+          : await rejectTeamApplication({
+              applicationId: application.id,
+            })
+      applyApplicationMutationResult(updated)
+      const reloadJobs: Array<Promise<unknown>> = [
+        fetchTeamApplications({ teamId }).then((data) => {
+          setApplications(data)
+          setApplicationsLoaded(true)
+        }),
+      ]
+
       if (statusValue === 'accepted') {
-        await reloadMembers(teamId)
+        reloadJobs.push(
+          reloadMembers(teamId).then(() => {
+            notifyTeamsUpdated()
+          }),
+        )
       }
+
+      try {
+        await Promise.all(reloadJobs)
+      } catch (refreshError) {
+        console.error('Failed to refresh application management state', refreshError)
+      }
+      setApplicationFeedback(updated.message)
     } catch (error) {
-      setApplicationError(error instanceof Error ? error.message : '신청 상태를 변경하지 못했습니다.')
+      setApplicationError(error instanceof Error ? error.message : 'Failed to update the application status.')
     } finally {
       setPendingApplicationId(null)
     }

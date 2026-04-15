@@ -139,7 +139,7 @@ export function AuthMenu({
       </button>
 
       {isMenuOpen && (
-        <div className="absolute right-0 top-full mt-3 w-56 rounded-3xl border border-campus-200 bg-white/96 p-2 shadow-card">
+        <div className="absolute right-0 top-full mt-3 w-56 rounded-3xl border border-campus-200 bg-white p-2 shadow-[0_18px_40px_rgba(26,34,51,0.16)]">
           <div className="border-b border-campus-100 px-3 py-3">
             <p className="text-sm font-semibold text-campus-900">{displayName}</p>
             <p className="text-sm leading-relaxed text-campus-500">{user.email}</p>

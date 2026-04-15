@@ -1,4 +1,10 @@
 import { supabase } from '../../../lib/supabase'
+import {
+  extractProfileImagePath,
+  removeProfileImageByPath,
+  uploadProfileImage,
+  validateProfileImageFile,
+} from './profileImages'
 import type {
   EditableProfileForm,
   EditableProfileProject,
@@ -46,6 +52,19 @@ interface SaveProfileResult {
   savedProfile: ProfileRecord | null
   savedProfileSkills: ProfileSkillRecord[]
   savedProfileProjects: ProfileProjectRecord[]
+}
+
+function describeError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) {
+      return message
+    }
+  }
+  return fallback
 }
 
 function normalizeProjectInput(projects: EditableProfileProject[]) {
@@ -97,8 +116,20 @@ export async function saveProfilePageData(params: {
   form: EditableProfileForm
   selectedSkills: SelectedSkill[]
   projects: EditableProfileProject[]
+  imageFile?: File | null
+  removeImage?: boolean
+  currentProfileImageUrl?: string | null
 }) {
-  const { userId, email, form, selectedSkills, projects } = params
+  const {
+    userId,
+    email,
+    form,
+    selectedSkills,
+    projects,
+    imageFile = null,
+    removeImage = false,
+    currentProfileImageUrl = null,
+  } = params
   const normalizedSkills = Array.from(
     new Map(
       selectedSkills
@@ -107,6 +138,32 @@ export async function saveProfilePageData(params: {
     ).values(),
   )
   const normalizedProjects = normalizeProjectInput(projects)
+
+  const previousImagePath = extractProfileImagePath(currentProfileImageUrl ?? form.profile_image_url)
+  let nextImagePath: string | null = previousImagePath
+  let uploadedImagePath: string | null = null
+  let nextProfileImageUrl: string | null = removeImage ? null : form.profile_image_url || null
+
+  if (imageFile) {
+    const validationMessage = validateProfileImageFile(imageFile)
+
+    if (validationMessage) {
+      throw new Error(validationMessage)
+    }
+
+    try {
+      const uploadedImage = await uploadProfileImage(userId, imageFile)
+      uploadedImagePath = uploadedImage.path
+      nextImagePath = uploadedImage.path
+      nextProfileImageUrl = uploadedImage.publicUrl
+    } catch (error) {
+      throw new Error(`프로필 이미지를 업로드하지 못했습니다. ${describeError(error, '잠시 후 다시 시도해 주세요.')}`)
+    }
+  }
+
+  if (removeImage && !imageFile) {
+    nextImagePath = null
+  }
 
   const profilePayload = {
     id: userId,
@@ -125,96 +182,130 @@ export async function saveProfilePageData(params: {
     collaboration_style: form.collaboration_style || null,
     working_style: form.working_style || null,
     availability: form.availability || null,
-    profile_image_url: form.profile_image_url || null,
+    profile_image_url: imageFile ? form.profile_image_url || null : nextProfileImageUrl,
     github_url: form.github_url || null,
     blog_url: form.blog_url || null,
     portfolio_url: form.portfolio_url || null,
     updated_at: new Date().toISOString(),
   }
 
-  const { data: savedProfile, error: profileError } = await supabase
-    .from('profiles')
-    .upsert(profilePayload, { onConflict: 'id' })
-    .select()
-    .single()
+  let savedProfile: ProfileRecord | null = null
 
-  if (profileError) {
-    throw profileError
-  }
+  try {
+    const { data: upsertedProfile, error: profileError } = await supabase
+      .from('profiles')
+      .upsert(profilePayload, { onConflict: 'id' })
+      .select()
+      .single()
 
-  const { error: deleteSkillsError } = await supabase
-    .from('profile_skills')
-    .delete()
-    .eq('profile_id', userId)
+    if (profileError) {
+      throw profileError
+    }
 
-  if (deleteSkillsError) {
-    throw deleteSkillsError
-  }
+    savedProfile = (upsertedProfile as ProfileRecord | null) ?? null
 
-  let savedProfileSkills: ProfileSkillRecord[] = []
-
-  if (normalizedSkills.length > 0) {
-    const payload = normalizedSkills.map((item) => ({
-      profile_id: userId,
-      skill_id: item.skill_id,
-      level: item.level,
-    }))
-
-    const { data: insertedSkills, error: insertSkillsError } = await supabase
+    const { error: deleteSkillsError } = await supabase
       .from('profile_skills')
-      .insert(payload)
-      .select()
+      .delete()
+      .eq('profile_id', userId)
 
-    if (insertSkillsError) {
-      throw insertSkillsError
+    if (deleteSkillsError) {
+      throw deleteSkillsError
     }
 
-    savedProfileSkills = (insertedSkills as ProfileSkillRecord[] | null) ?? []
-  }
+    let savedProfileSkills: ProfileSkillRecord[] = []
 
-  const { error: deleteProjectsError } = await supabase
-    .from('profile_projects')
-    .delete()
-    .eq('profile_id', userId)
+    if (normalizedSkills.length > 0) {
+      const payload = normalizedSkills.map((item) => ({
+        profile_id: userId,
+        skill_id: item.skill_id,
+        level: item.level,
+      }))
 
-  if (deleteProjectsError) {
-    throw deleteProjectsError
-  }
+      const { data: insertedSkills, error: insertSkillsError } = await supabase
+        .from('profile_skills')
+        .insert(payload)
+        .select()
 
-  let savedProfileProjects: ProfileProjectRecord[] = []
+      if (insertSkillsError) {
+        throw insertSkillsError
+      }
 
-  if (normalizedProjects.length > 0) {
-    const payload = normalizedProjects.map((project) => ({
-      profile_id: userId,
-      ...project,
-      updated_at: new Date().toISOString(),
-    }))
+      savedProfileSkills = (insertedSkills as ProfileSkillRecord[] | null) ?? []
+    }
 
-    const { data: insertedProjects, error: insertProjectsError } = await supabase
+    const { error: deleteProjectsError } = await supabase
       .from('profile_projects')
-      .insert(payload)
-      .select()
-      .order('display_order')
+      .delete()
+      .eq('profile_id', userId)
 
-    if (insertProjectsError) {
-      throw insertProjectsError
+    if (deleteProjectsError) {
+      throw deleteProjectsError
     }
 
-    savedProfileProjects = (insertedProjects as ProfileProjectRecord[] | null) ?? []
+    let savedProfileProjects: ProfileProjectRecord[] = []
+
+    if (normalizedProjects.length > 0) {
+      const payload = normalizedProjects.map((project) => ({
+        profile_id: userId,
+        ...project,
+        updated_at: new Date().toISOString(),
+      }))
+
+      const { data: insertedProjects, error: insertProjectsError } = await supabase
+        .from('profile_projects')
+        .insert(payload)
+        .select()
+        .order('display_order')
+
+      if (insertProjectsError) {
+        throw insertProjectsError
+      }
+
+      savedProfileProjects = (insertedProjects as ProfileProjectRecord[] | null) ?? []
+    }
+
+    if (imageFile) {
+      const { data: imageUpdatedProfile, error: imageUpdateError } = await supabase
+        .from('profiles')
+        .update({
+          profile_image_url: nextProfileImageUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .select()
+        .single()
+
+      if (imageUpdateError) {
+        throw imageUpdateError
+      }
+
+      savedProfile = (imageUpdatedProfile as ProfileRecord | null) ?? savedProfile
+    }
+
+    const { error: authUpdateError } = await supabase.auth.updateUser({
+      data: {
+        full_name: form.full_name || '',
+      },
+    })
+
+    if (previousImagePath && previousImagePath !== nextImagePath) {
+      await removeProfileImageByPath(previousImagePath).catch(() => undefined)
+    }
+
+    return {
+      metadataSyncFailed: Boolean(authUpdateError),
+      savedProfile,
+      savedProfileSkills,
+      savedProfileProjects,
+    } satisfies SaveProfileResult
+  } catch (error) {
+    if (uploadedImagePath) {
+      await removeProfileImageByPath(uploadedImagePath).catch(() => undefined)
+    }
+
+    throw error
   }
-
-  const { error: authUpdateError } = await supabase.auth.updateUser({
-    data: {
-      full_name: form.full_name || '',
-    },
-  })
-
-  return {
-    metadataSyncFailed: Boolean(authUpdateError),
-    savedProfile: (savedProfile as ProfileRecord | null) ?? null,
-    savedProfileSkills,
-    savedProfileProjects,
-  } satisfies SaveProfileResult
 }
 
 export async function requestAccountDeletion() {

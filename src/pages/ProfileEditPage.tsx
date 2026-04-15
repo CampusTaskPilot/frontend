@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Plus, Trash2 } from 'lucide-react'
+import { ImagePlus, LoaderCircle, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { SkillSelector } from '../components/common/SkillSelector'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -9,6 +9,12 @@ import { TextareaField } from '../components/ui/TextareaField'
 import { useImeSafeSubmit } from '../hooks/useImeSafeSubmit'
 import { useAuth } from '../features/auth/context/useAuth'
 import { DeleteAccountModal } from '../features/profile/components/DeleteAccountModal'
+import { ProfileAvatar } from '../features/profile/components/ProfileAvatar'
+import {
+  PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_STORAGE_ENABLED,
+  validateProfileImageFile,
+} from '../features/profile/lib/profileImages'
 import {
   fetchProfilePageData,
   requestAccountDeletion,
@@ -96,6 +102,8 @@ export function ProfileEditPage() {
   const [projects, setProjects] = useState<EditableProfileProject[]>([])
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [imageErrorMessage, setImageErrorMessage] = useState('')
+  const [shouldRemoveImage, setShouldRemoveImage] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
@@ -110,13 +118,15 @@ export function ProfileEditPage() {
   const draftKey = useMemo(() => (userId ? getProfileEditDraftKey(userId) : ''), [userId])
   const isBrowserUnloadRef = useRef(false)
   const hasInitialFormRef = useRef(false)
+  const savedProfileImageUrlRef = useRef('')
   const imeInputProps = {
     onCompositionStart: ime.handleCompositionStart,
     onCompositionEnd: ime.handleCompositionEnd,
     onKeyDown: ime.preventEnterWhileComposing<HTMLInputElement>(),
   }
 
-  const displayPreview = selectedImageFile ? imagePreviewUrl : form.profile_image_url || imagePreviewUrl
+  const displayPreview = selectedImageFile ? imagePreviewUrl : imagePreviewUrl || form.profile_image_url
+  const imageSizeLimitLabel = `${Math.round(PROFILE_IMAGE_MAX_SIZE_BYTES / 1024 / 1024)}MB`
 
   const markDirty = () => setIsDirty(true)
   const clearDraft = () => {
@@ -185,6 +195,13 @@ export function ProfileEditPage() {
         if (!isMounted) return
         setAllSkills(skills)
         if (!hasInitialFormRef.current) {
+          const initialForm = buildEditableProfileForm({
+            profile,
+            fallbackEmail: user.email ?? '',
+            fallbackFullName:
+              typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : '',
+          })
+          savedProfileImageUrlRef.current = initialForm.profile_image_url
           const draft = draftKey ? loadProfileEditDraft(draftKey) : null
           if (draft) {
             setForm(draft.form)
@@ -193,17 +210,13 @@ export function ProfileEditPage() {
             setImagePreviewUrl(draft.form.profile_image_url)
             setIsDirty(true)
           } else {
-            const initialForm = buildEditableProfileForm({
-              profile,
-              fallbackEmail: user.email ?? '',
-              fallbackFullName:
-                typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : '',
-            })
             setForm(initialForm)
             setSelectedSkills(profileSkillsToSelectedSkills(profileSkills))
             setProjects(profileProjectsToEditableProjects(profileProjects))
             setImagePreviewUrl(initialForm.profile_image_url)
           }
+          setImageErrorMessage('')
+          setShouldRemoveImage(false)
           hasInitialFormRef.current = true
           setIsInitialized(true)
         }
@@ -257,23 +270,53 @@ export function ProfileEditPage() {
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+
+    if (!PROFILE_IMAGE_STORAGE_ENABLED) {
+      setImageErrorMessage('현재 프로필 이미지 업로드를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+      event.target.value = ''
+      return
+    }
+
+    const validationMessage = validateProfileImageFile(file)
+
+    if (validationMessage) {
+      setImageErrorMessage(validationMessage)
+      event.target.value = ''
+      return
+    }
+
     if (imagePreviewUrl.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl)
     markDirty()
     setSelectedImageFile(file)
+    setShouldRemoveImage(false)
     setImagePreviewUrl(URL.createObjectURL(file))
+    setImageErrorMessage('')
+    event.target.value = ''
   }
   const handleResetImage = () => {
     if (imagePreviewUrl.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl)
     markDirty()
     setSelectedImageFile(null)
+    setShouldRemoveImage(false)
     setImagePreviewUrl(form.profile_image_url)
+    setImageErrorMessage('')
   }
   const handleRemoveImage = () => {
     if (imagePreviewUrl.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl)
     markDirty()
     setSelectedImageFile(null)
+    setShouldRemoveImage(true)
     setImagePreviewUrl('')
+    setImageErrorMessage('')
     updateForm('profile_image_url', '')
+  }
+  const handleProfileImageUrlChange = (value: string) => {
+    if (imagePreviewUrl.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl)
+    setSelectedImageFile(null)
+    setShouldRemoveImage(false)
+    setImagePreviewUrl(value)
+    setImageErrorMessage('')
+    updateForm('profile_image_url', value)
   }
 
   const handleSaveProfile = async () => {
@@ -281,8 +324,18 @@ export function ProfileEditPage() {
     setIsSaving(true)
     setErrorMessage('')
     setSuccessMessage('')
+    setImageErrorMessage('')
     try {
-      const result = await saveProfilePageData({ userId, email: user.email, form, selectedSkills, projects })
+      const result = await saveProfilePageData({
+        userId,
+        email: user.email,
+        form,
+        selectedSkills,
+        projects,
+        imageFile: selectedImageFile,
+        removeImage: shouldRemoveImage,
+        currentProfileImageUrl: savedProfileImageUrlRef.current,
+      })
       if (result.savedProfile) {
         const nextForm = buildEditableProfileForm({
           profile: result.savedProfile,
@@ -291,6 +344,7 @@ export function ProfileEditPage() {
         })
         setForm(nextForm)
         setImagePreviewUrl(nextForm.profile_image_url)
+        savedProfileImageUrlRef.current = nextForm.profile_image_url
       }
       setSelectedSkills(result.savedProfileSkills.length > 0 ? result.savedProfileSkills : selectedSkills)
       setProjects(
@@ -299,6 +353,8 @@ export function ProfileEditPage() {
           : projects.filter((project) => project.name.trim()),
       )
       setSelectedImageFile(null)
+      setShouldRemoveImage(false)
+      setImageErrorMessage('')
       clearDraft()
       navigate(`/profile/${userId}`)
     } catch (error) {
@@ -368,15 +424,56 @@ export function ProfileEditPage() {
           <Card className="space-y-5">
             <h2 className="font-display text-2xl text-campus-900">프로필 이미지</h2>
             <div className="flex flex-col gap-4">
-              <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] border border-campus-200 bg-campus-50">
-                {displayPreview ? <img src={displayPreview} alt="프로필 이미지 미리보기" width={128} height={128} className="h-full w-full object-cover" /> : <span className="text-sm text-campus-500">이미지 없음</span>}
-              </div>
+              <ProfileAvatar
+                src={displayPreview}
+                name={form.full_name}
+                email={form.email}
+                alt="Profile image preview"
+                className="h-32 w-32 rounded-[2rem]"
+                fallbackClassName="text-4xl"
+              />
               <div className="flex flex-wrap gap-2">
-                <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-campus-200 bg-white px-5 py-2.5 text-sm font-medium text-campus-700 transition-colors hover:bg-brand-50">이미지 선택<input type="file" accept="image/*" className="hidden" onChange={handleImageChange} /></label>
-                <Button variant="ghost" type="button" onClick={handleResetImage}>미리보기 초기화</Button>
-                <Button variant="ghost" type="button" onClick={handleRemoveImage}>이미지 제거</Button>
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-campus-200 bg-white px-5 py-2.5 text-sm font-medium text-campus-700 transition-colors hover:bg-brand-50">
+                  <ImagePlus size={16} aria-hidden="true" />
+                  이미지 선택
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={handleImageChange}
+                    disabled={!PROFILE_IMAGE_STORAGE_ENABLED || isSaving}
+                  />
+                </label>
+                <Button variant="ghost" type="button" onClick={handleResetImage} disabled={isSaving} className="gap-2">
+                  <RotateCcw size={16} aria-hidden="true" />
+                  미리보기 초기화
+                </Button>
+                <Button variant="ghost" type="button" onClick={handleRemoveImage} disabled={isSaving} className="gap-2">
+                  <X size={16} aria-hidden="true" />
+                  이미지 제거
+                </Button>
               </div>
-              <InputField label="프로필 이미지 URL" name="profile_image_url" type="url" value={form.profile_image_url} onChange={(event) => updateForm('profile_image_url', event.target.value)} placeholder="https://example.com/profile.jpg" {...imeInputProps} />
+              {selectedImageFile ? (
+                <p className="break-all text-xs text-campus-500">선택한 파일: {selectedImageFile.name}</p>
+              ) : null}
+              <p className={imageErrorMessage ? 'text-xs text-rose-600' : 'text-xs text-campus-500'}>
+                {imageErrorMessage || `JPG, PNG, WEBP 이미지를 ${imageSizeLimitLabel} 이하로 업로드할 수 있습니다. 저장 시 Supabase Storage에 업로드됩니다.`}
+              </p>
+              {isSaving && selectedImageFile ? (
+                <p className="inline-flex items-center gap-2 text-xs font-medium text-brand-700">
+                  <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+                  이미지 업로드 및 프로필 저장 중
+                </p>
+              ) : null}
+              <InputField
+                label="프로필 이미지 URL"
+                name="profile_image_url"
+                type="url"
+                value={form.profile_image_url}
+                onChange={(event) => handleProfileImageUrlChange(event.target.value)}
+                placeholder="https://example.com/profile.jpg"
+                {...imeInputProps}
+              />
             </div>
           </Card>
 

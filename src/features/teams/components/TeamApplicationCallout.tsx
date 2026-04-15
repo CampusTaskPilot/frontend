@@ -60,8 +60,7 @@ export function TeamApplicationCallout({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-600">TEAM APPLY</p>
           <h2 className="font-display text-2xl text-campus-900">팀 참여 신청</h2>
           <p className="max-w-2xl text-sm leading-6 text-campus-600">
-            공개 프로필과 신청 메시지를 기준으로 팀 리더가 지원 내용을 검토합니다. AI 분석은 보조 정보로만 쓰이며,
-            신청 자체는 분석 준비 상태와 관계없이 정상 저장됩니다.
+            공개 프로필과 신청 메시지를 기준으로 팀 리더가 지원 내용을 검토합니다.
           </p>
         </div>
 

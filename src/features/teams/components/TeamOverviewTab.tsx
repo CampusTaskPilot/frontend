@@ -6,14 +6,16 @@ import {
   Crown,
   FileText,
   ImageOff,
+  ImagePlus,
   LoaderCircle,
   NotebookText,
   PencilLine,
   Sparkles,
   Target,
   Trash2,
-  Upload,
+  UploadCloud,
   Users,
+  X,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
 import {
@@ -30,12 +32,19 @@ import { Badge as UiBadge } from '@/components/shadcn/badge'
 import { Button as UiButton } from '@/components/shadcn/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/shadcn/card'
 import { Input } from '@/components/shadcn/input'
+import { Separator } from '@/components/shadcn/separator'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/shadcn/sheet'
 import { Skeleton } from '@/components/shadcn/skeleton'
 import { Textarea } from '@/components/shadcn/textarea'
 import { cn } from '@/lib/utils'
-import { TEAM_IMAGE_STORAGE_ENABLED, validateTeamImageFile } from '../lib/teamProfileImages'
-import { updateTeamProfile } from '../lib/teams'
+import { TeamProfileImage } from './TeamProfileImage'
+import { TEAM_IMAGE_MAX_SIZE_BYTES, TEAM_IMAGE_STORAGE_ENABLED, validateTeamImageFile } from '../lib/teamProfileImages'
+import {
+  buildTeamStoryDescription,
+  splitTeamStoryDescription,
+  type TeamStoryField,
+} from '../lib/teamStoryDescription'
+import { TEAM_SUMMARY_MAX_LENGTH, TEAM_SUMMARY_LENGTH_MESSAGE, updateTeamProfile } from '../lib/teams'
 import type {
   ProfileSummary,
   TeamMemberWithProfile,
@@ -91,29 +100,19 @@ function makeDraft(team: TeamRecord): EditDraft {
   }
 }
 
-function splitTextBlocks(value: string) {
-  const normalized = normalize(value).replace(/\r\n/g, '\n')
-  if (!normalized) return []
+function joinCopy(...parts: Array<string | null | undefined>) {
+  const seen = new Set<string>()
 
-  const paragraphs = normalized
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-
-  if (paragraphs.length > 1) return paragraphs.slice(0, 3)
-
-  const sentences = normalized
-    .split(/(?<=[.!?。！？])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean)
-
-  if (sentences.length <= 1) return [normalized]
-
-  const chunkSize = Math.max(1, Math.ceil(sentences.length / 3))
-
-  return Array.from({ length: Math.ceil(sentences.length / chunkSize) }, (_, index) =>
-    sentences.slice(index * chunkSize, (index + 1) * chunkSize).join(' '),
-  ).slice(0, 3)
+  return parts
+    .map((part) => normalize(part))
+    .filter((part) => {
+      if (!part) return false
+      const key = part.replace(/\s+/g, ' ')
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .join(' ')
 }
 
 function buildStorySections(args: {
@@ -125,32 +124,32 @@ function buildStorySections(args: {
   maxMembers: number
   isRecruiting: boolean
 }) {
-  const blocks = splitTextBlocks(args.description)
+  const story = splitTeamStoryDescription(args.description)
   const skillLine =
     args.skillNames.length > 0
-      ? `${args.skillNames.slice(0, 4).join(', ')} 역량을 바탕으로 역할을 나누고, 필요한 기술은 팀 목표에 맞춰 유연하게 확장합니다.`
-      : '아직 등록된 기술 스택은 많지 않지만, 팀이 해결하려는 문제에 맞춰 필요한 역량을 정리해 나가는 단계입니다.'
+      ? `${args.skillNames.slice(0, 4).join(', ')}를 중심으로 역할을 나누고, 필요한 기술은 팀의 목표와 단계에 맞춰 유연하게 확장하고 있습니다.`
+      : '아직 공개된 기술은 많지 않지만, 팀이 풀고 있는 문제와 필요한 역할을 기준으로 협업 범위를 차근차근 정리하고 있습니다.'
   const statusLine = args.isRecruiting
     ? `현재 ${numberFormatter.format(args.memberCount)}명이 함께하고 있으며 최대 ${numberFormatter.format(args.maxMembers)}명까지 합류할 수 있습니다.`
     : `현재 ${numberFormatter.format(args.memberCount)}명 규모로 운영 중이며, 기존 멤버 중심으로 작업 밀도와 완성도를 높이고 있습니다.`
 
   return [
     {
-      eyebrow: '핵심 소개',
-      title: '팀이 무엇을 만들고 있나요',
-      body: blocks[0] ?? args.summary,
+      eyebrow: '팀의 방향',
+      title: '무엇을 목표로 움직이고 있나요',
+      body: story.direction || args.summary,
       icon: FileText,
     },
     {
       eyebrow: '협업 방식',
-      title: '어떤 흐름으로 일하나요',
-      body: blocks[1] ?? skillLine,
+      title: '어떤 방식으로 실행하고 있나요',
+      body: story.workflow || skillLine,
       icon: Target,
     },
     {
-      eyebrow: '운영 상태',
-      title: '지금 팀은 어떤 단계인가요',
-      body: blocks[2] ?? `${statusLine} 현재 운영 리더는 ${args.leaderName}입니다.`,
+      eyebrow: '운영 현황',
+      title: '지금 팀은 어떤 상태인가요',
+      body: joinCopy(story.operation, statusLine, `현재 운영 리더는 ${args.leaderName}입니다.`),
       icon: NotebookText,
     },
   ] satisfies StorySection[]
@@ -268,6 +267,9 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
     normalize(team.description) || '아직 팀 상세 설명이 없습니다. 팀이 해결하려는 문제와 작업 방향을 소개해 보세요.'
   const teamNote = normalize(team.team_note)
   const editorImageUrl = draft.removeImage ? null : previewImageUrl ?? team.image_url
+  const editorPreviewName = normalize(draft.name) || team.name || '새 팀'
+  const imageSizeLimitLabel = `${Math.round(TEAM_IMAGE_MAX_SIZE_BYTES / 1024 / 1024)}MB 이하`
+  const storyDraft = useMemo(() => splitTeamStoryDescription(draft.description), [draft.description])
   const overviewSections = useMemo(
     () =>
       buildStorySections({
@@ -289,6 +291,18 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
     draft.removeImage ||
     Boolean(selectedImageFile)
   const isDeleteConfirmed = deleteConfirmationName.trim() === team.name.trim()
+
+  const updateStoryDraft = (field: TeamStoryField, value: string) => {
+    const nextStory = {
+      ...storyDraft,
+      [field]: value,
+    }
+
+    setDraft((current) => ({
+      ...current,
+      description: buildTeamStoryDescription(nextStory),
+    }))
+  }
 
   useEffect(() => {
     if (!isEditorOpen || !isDirty) return
@@ -330,6 +344,11 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
   const handleSave = async () => {
     if (!currentUserId) {
       setSaveError('로그인 후에만 팀 소개를 수정할 수 있습니다.')
+      return
+    }
+
+    if (draft.summary.trim().length > TEAM_SUMMARY_MAX_LENGTH) {
+      setSaveError(TEAM_SUMMARY_LENGTH_MESSAGE)
       return
     }
 
@@ -469,27 +488,29 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
               </p>
             </div>
 
-            <div className="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/78 p-3 shadow-[0_28px_72px_-42px_rgba(15,23,42,0.45)] backdrop-blur">
-              <div className="relative overflow-hidden rounded-[1.35rem] border border-brand-100/70 bg-[linear-gradient(160deg,rgba(240,247,255,0.96),rgba(255,255,255,0.92))]">
-                {team.image_url ? (
-                  <img src={team.image_url} alt={`${team.name} 대표 이미지`} className="aspect-[16/7] w-full object-cover" />
-                ) : (
-                  <div className="flex aspect-[16/7] w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.14),transparent_52%),linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-6 text-center">
-                    <div className="flex size-16 items-center justify-center rounded-3xl bg-white/90 text-brand-700 shadow-sm">
-                      <ImageOff className="size-7" aria-hidden="true" />
+            <div className="mx-auto w-full max-w-5xl">
+              <div className="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/78 p-2.5 shadow-[0_28px_72px_-42px_rgba(15,23,42,0.45)] backdrop-blur">
+                <div className="relative overflow-hidden rounded-[1.35rem] border border-brand-100/70 bg-[linear-gradient(160deg,rgba(240,247,255,0.96),rgba(255,255,255,0.92))]">
+                  {team.image_url ? (
+                    <img src={team.image_url} alt={`${team.name} 대표 이미지`} className="aspect-[16/6] w-full object-cover" />
+                  ) : (
+                    <div className="flex aspect-[16/6] w-full flex-col items-center justify-center gap-3 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.14),transparent_52%),linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-6 text-center">
+                      <div className="flex size-14 items-center justify-center rounded-3xl bg-white/90 text-brand-700 shadow-sm">
+                        <ImageOff className="size-6" aria-hidden="true" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">대표 이미지가 아직 없습니다</p>
+                        <p className="break-keep text-xs leading-5 text-slate-500">
+                         팀을 더 잘 표현할 수 있도록 이미지를 추가해보세요.
+                        </p>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold text-slate-900">대표 이미지가 아직 없습니다</p>
-                      <p className="break-keep text-xs leading-5 text-slate-500">
-                        이미지가 없어도 안정적으로 보이도록 fallback 화면을 보여줍니다.
-                      </p>
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="mx-auto grid w-full max-w-5xl gap-3 sm:grid-cols-3">
               <MetaCard icon={BriefcaseBusiness} label="카테고리" value={team.category ?? '미정'} />
               <MetaCard icon={Users} label="인원 현황" value={occupancyLabel} />
               <MetaCard icon={Crown} label="운영 리더" value={leaderName} />
@@ -500,9 +521,9 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
 
       <UiCard className="rounded-[1.75rem] border-slate-200/80 shadow-[0_26px_70px_-48px_rgba(15,23,42,0.42)]">
         <CardHeader className="gap-2 pb-2">
-          <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">Team Story</CardTitle>
+          <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">팀 소개</CardTitle>
           <CardDescription className="break-keep text-sm leading-6 text-slate-500">
-            현재 저장된 `summary`와 `description`을 중심으로 팀의 정체성과 운영 맥락이 자연스럽게 읽히도록 재구성했습니다.
+            팀 소개와 상세 설명을 바탕으로, 이 팀이 어디를 향해 움직이고 있는지 한눈에 읽히도록 정리했습니다.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -519,33 +540,25 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
           <CardHeader className="gap-2 pb-2">
             <CardTitle className="text-lg font-semibold tracking-[-0.03em] text-slate-950">기술 스택</CardTitle>
             <CardDescription className="break-keep text-sm leading-6 text-slate-500">
-              현재 연결된 `team_skills` 기반의 기술만 사용해 팀의 작업 기반을 보여줍니다.
+              팀이 실제로 활용 중인 기술과 협업 기반을 한곳에서 확인할 수 있습니다.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {skillNames.length > 0 ? (
-              <>
-                <div className="flex flex-wrap gap-2.5">
-                  {skillNames.map((skill) => (
-                    <UiBadge
-                      key={skill}
-                      variant="secondary"
-                      className="h-9 rounded-full bg-brand-50 px-3.5 text-[0.8rem] font-medium text-brand-700"
-                    >
-                      {skill}
-                    </UiBadge>
-                  ))}
-                </div>
-                <div className="rounded-[1.4rem] border border-slate-200/80 bg-slate-50/80 px-4 py-4">
-                  <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">현재 연결된 기술 수</p>
-                  <p className="mt-1 text-base font-semibold text-slate-950">
-                    총 {numberFormatter.format(skillNames.length)}개 기술이 등록되어 있습니다.
-                  </p>
-                </div>
-              </>
+              <div className="flex flex-wrap gap-2.5">
+                {skillNames.map((skill) => (
+                  <UiBadge
+                    key={skill}
+                    variant="secondary"
+                    className="h-9 rounded-full bg-brand-50 px-3.5 text-[0.8rem] font-medium text-brand-700"
+                  >
+                    {skill}
+                  </UiBadge>
+                ))}
+              </div>
             ) : (
               <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-sm leading-6 text-slate-500">
-                아직 등록된 기술 스택이 없습니다. 데이터가 비어 있어도 레이아웃이 무너지지 않도록 안내 문구와 여백을 유지했습니다.
+                아직 등록된 기술이 없습니다. 팀에서 주로 사용하는 도구나 기술을 추가하면 팀의 성격을 더 분명하게 보여줄 수 있습니다.
               </div>
             )}
           </CardContent>
@@ -555,7 +568,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
           <CardHeader className="gap-2 pb-2">
             <CardTitle className="text-lg font-semibold tracking-[-0.03em] text-slate-950">팀 메모</CardTitle>
             <CardDescription className="break-keep text-sm leading-6 text-slate-500">
-              공지나 운영 메모처럼 팀이 계속 참고할 내용을 담는 보조 정보 영역입니다.
+              운영 원칙, 공지, 합류 전 참고사항처럼 팀에서 계속 공유할 내용을 정리하는 공간입니다.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -565,7 +578,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
               </div>
             ) : (
               <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-sm leading-6 text-slate-500">
-                아직 등록된 팀 메모가 없습니다. 팀 운영 공지나 짧은 안내가 필요하다면 소개 편집에서 바로 추가할 수 있습니다.
+                아직 공유된 운영 메모가 없습니다. 공지나 협업 원칙이 있다면 팀 소개 편집에서 바로 추가할 수 있습니다.
               </div>
             )}
           </CardContent>
@@ -573,11 +586,11 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
       </div>
 
       <Sheet open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto bg-white sm:max-w-xl">
+        <SheetContent side="right" className="w-full overflow-y-auto bg-slate-50 sm:max-w-2xl">
           <SheetHeader className="text-left">
             <SheetTitle>팀 소개 편집</SheetTitle>
             <SheetDescription className="break-keep leading-6">
-              현재 DB 필드 안에서 대표 이미지, 팀 이름, 한줄 소개, 상세 설명, 팀 메모만 간단하게 수정할 수 있습니다.
+              팀 생성 폼과 같은 기준으로 기본 정보, 소개, 이미지를 다시 정리합니다.
             </SheetDescription>
           </SheetHeader>
 
@@ -590,93 +603,163 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
               </Alert>
             ) : null}
 
-            <div className="rounded-[1.5rem] border border-slate-200/80 bg-slate-50/80 p-4">
-              <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">미리보기</p>
-              <p className="mt-2 break-keep text-lg font-semibold leading-7 text-slate-950">
-                {normalize(draft.summary) || '한줄 소개가 비어 있으면 기본 안내 문구가 노출됩니다.'}
-              </p>
-              <p className="mt-2 break-keep text-sm leading-6 text-slate-500">
-                저장 시 기존 `teams` 테이블의 이름, 소개, 설명, 이미지, 팀 메모 필드만 업데이트됩니다.
-              </p>
-            </div>
+            <UiCard className="rounded-[1.75rem] border-slate-200/80 bg-white shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
+              <CardHeader className="gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">기본 정보</CardTitle>
+                  <UiBadge className="h-7 rounded-full px-3">필수</UiBadge>
+                </div>
+                <CardDescription className="leading-6">
+                  팀 목록과 overview 상단에서 가장 먼저 보이는 정보입니다.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-5">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="team-overview-name" className="text-sm font-semibold text-slate-900">
+                    팀 이름
+                  </label>
+                  <Input
+                    id="team-overview-name"
+                    className="h-12 rounded-2xl px-4 text-sm"
+                    value={draft.name}
+                    onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                    maxLength={60}
+                    placeholder="예: AI 스터디 팀"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-slate-500">팀 목록에서 가장 먼저 보여질 이름이에요.</p>
+                </div>
 
-            <div className="flex flex-col gap-2">
-              <label htmlFor="team-overview-name" className="text-sm font-semibold text-slate-900">
-                팀 이름
-              </label>
-              <Input
-                id="team-overview-name"
-                className="min-h-11 rounded-2xl"
-                value={draft.name}
-                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                maxLength={60}
-                placeholder="팀 이름을 입력해 주세요"
-              />
-            </div>
+                <Separator />
 
-            <div className="flex flex-col gap-2">
-              <label htmlFor="team-overview-summary" className="text-sm font-semibold text-slate-900">
-                한줄 소개
-              </label>
-              <Textarea
-                id="team-overview-summary"
-                className="min-h-[96px] rounded-2xl leading-7"
-                value={draft.summary}
-                onChange={(event) => setDraft((current) => ({ ...current, summary: event.target.value }))}
-                maxLength={180}
-                rows={3}
-                placeholder="이 팀이 어떤 목표를 가진 팀인지 짧게 소개해 주세요"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label htmlFor="team-overview-description" className="text-sm font-semibold text-slate-900">
-                상세 설명
-              </label>
-              <Textarea
-                id="team-overview-description"
-                className="min-h-[180px] rounded-2xl leading-7"
-                value={draft.description}
-                onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-                rows={8}
-                placeholder="팀이 해결하려는 문제, 진행 방식, 현재 방향을 조금 더 자세히 작성해 주세요"
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label htmlFor="team-overview-note" className="text-sm font-semibold text-slate-900">
-                팀 운영 메모
-              </label>
-              <Textarea
-                id="team-overview-note"
-                className="min-h-[128px] rounded-2xl leading-7"
-                value={draft.teamNote}
-                onChange={(event) => setDraft((current) => ({ ...current, teamNote: event.target.value }))}
-                rows={5}
-                placeholder="공지, 참고 메모, 운영 원칙처럼 팀 안에서 자주 공유할 내용을 적어둘 수 있습니다"
-              />
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">대표 이미지</p>
-                  <p className="break-keep text-sm leading-6 text-slate-500">
-                    {TEAM_IMAGE_STORAGE_ENABLED
-                      ? 'JPG, PNG, WEBP 형식의 이미지를 업로드할 수 있습니다.'
-                      : '현재는 이미지 스토리지가 비활성화되어 있습니다.'}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="team-overview-summary" className="text-sm font-semibold text-slate-900">
+                    한 줄 소개
+                  </label>
+                  <Input
+                    id="team-overview-summary"
+                    className="h-12 rounded-2xl px-4 text-sm"
+                    value={draft.summary}
+                    onChange={(event) => setDraft((current) => ({ ...current, summary: event.target.value }))}
+                    maxLength={TEAM_SUMMARY_MAX_LENGTH}
+                    placeholder="무엇을 함께 만들고 싶은지 한 줄로 적어주세요."
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-slate-500">
+                    짧아도 괜찮아요. {draft.summary.trim().length}/{TEAM_SUMMARY_MAX_LENGTH}자
                   </p>
                 </div>
+              </CardContent>
+            </UiCard>
+
+            <UiCard className="rounded-[1.75rem] border-slate-200/80 bg-white shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
+              <CardHeader className="gap-1.5">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">팀 소개</CardTitle>
+                  <UiBadge variant="outline" className="rounded-full px-2.5 text-[11px]">
+                    선택
+                  </UiBadge>
+                </div>
+                <CardDescription className="leading-5">
+                  어떤 팀인지, 어떻게 운영할지, 어떤 내용을 멤버와 공유할지 편하게 적어 주세요.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-5">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="team-overview-direction" className="text-sm font-semibold text-slate-900">
+                    팀의 방향
+                  </label>
+                  <Textarea
+                    id="team-overview-direction"
+                    className="min-h-[116px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                    value={storyDraft.direction}
+                    onChange={(event) => updateStoryDraft('direction', event.target.value)}
+                    rows={4}
+                    placeholder="무엇을 만들고 싶은지, 어떤 문제를 해결하려는지 적어주세요."
+                  />
+                  <p className="text-xs text-slate-500">overview의 ‘무엇을 목표로 움직이고 있나요’ 카드에 반영돼요.</p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="team-overview-workflow" className="text-sm font-semibold text-slate-900">
+                    협업 방식
+                  </label>
+                  <Textarea
+                    id="team-overview-workflow"
+                    className="min-h-[116px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                    value={storyDraft.workflow}
+                    onChange={(event) => updateStoryDraft('workflow', event.target.value)}
+                    rows={4}
+                    placeholder="어떤 방식으로 회의하고, 업무를 나누고, 결과를 공유할지 적어주세요."
+                  />
+                  <p className="text-xs text-slate-500">overview의 ‘어떤 방식으로 실행하고 있나요’ 카드에 반영돼요.</p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="team-overview-operation" className="text-sm font-semibold text-slate-900">
+                    운영 현황
+                  </label>
+                  <Textarea
+                    id="team-overview-operation"
+                    className="min-h-[116px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                    value={storyDraft.operation}
+                    onChange={(event) => updateStoryDraft('operation', event.target.value)}
+                    rows={4}
+                    placeholder="현재 팀 단계, 모집 상황, 리더가 공유하고 싶은 운영 맥락을 적어주세요."
+                  />
+                  <p className="text-xs text-slate-500">입력한 내용 뒤에 현재 인원과 운영 리더 정보가 함께 표시돼요.</p>
+                </div>
+
+                <Separator />
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="team-overview-note" className="text-sm font-semibold text-slate-900">
+                    팀 운영 메모
+                  </label>
+                  <Textarea
+                    id="team-overview-note"
+                    className="min-h-[128px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                    value={draft.teamNote}
+                    onChange={(event) => setDraft((current) => ({ ...current, teamNote: event.target.value }))}
+                    rows={5}
+                    placeholder="공지, 참고 메모, 운영 원칙처럼 팀 안에서 자주 공유할 내용을 적어둘 수 있습니다."
+                  />
+                  <p className="text-xs text-slate-500">팀원에게 계속 보여줄 안내가 있다면 여기에 남겨 주세요.</p>
+                </div>
+              </CardContent>
+            </UiCard>
+
+            <UiCard className="rounded-[1.75rem] border-slate-200/80 bg-white shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
+              <CardHeader className="gap-2">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">팀 이미지</CardTitle>
+                  <UiBadge variant="outline" className="rounded-full px-2.5 text-[11px]">
+                    선택
+                  </UiBadge>
+                </div>
+                <CardDescription className="leading-6">
+                  overview와 팀 생성 폼에서 사용하는 대표 이미지 비율에 맞춰 미리 확인할 수 있습니다.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <div className="overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.88))] p-2.5">
+                  <TeamProfileImage
+                    src={editorImageUrl}
+                    alt={`${editorPreviewName} 팀 이미지 미리보기`}
+                    teamName={editorPreviewName}
+                    className="aspect-[16/7] w-full rounded-[1rem]"
+                    priority="editor"
+                  />
+                </div>
+
                 <label
                   className={cn(
-                    'inline-flex min-h-11 cursor-pointer items-center rounded-2xl border px-4 text-sm font-semibold transition-colors',
+                    'flex min-h-[136px] cursor-pointer flex-col items-center justify-center rounded-[1.35rem] border border-dashed px-5 py-5 text-center transition-colors',
                     TEAM_IMAGE_STORAGE_ENABLED
-                      ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'
+                      ? 'border-slate-300 bg-slate-50/70 hover:border-brand-300 hover:bg-brand-50/60'
                       : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400',
                   )}
                 >
-                  <Upload data-icon="inline-start" aria-hidden="true" />
-                  이미지 선택
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
@@ -684,40 +767,59 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
                     onChange={handleImageChange}
                     disabled={!TEAM_IMAGE_STORAGE_ENABLED}
                   />
-                </label>
-              </div>
-
-              <div className="rounded-[1.5rem] border border-slate-200/80 bg-slate-50/80 p-4">
-                {editorImageUrl ? (
-                  <img
-                    src={editorImageUrl}
-                    alt={`${team.name} 대표 이미지 미리보기`}
-                    className="aspect-[4/3] w-full rounded-[1.15rem] object-cover"
-                  />
-                ) : (
-                  <div className="flex aspect-[4/3] w-full items-center justify-center rounded-[1.15rem] border border-dashed border-slate-200 bg-white px-6 text-center text-sm leading-6 text-slate-500">
-                    아직 등록된 대표 이미지가 없습니다.
+                  <div className="flex size-12 items-center justify-center rounded-[1.25rem] bg-white text-brand-700 shadow-sm">
+                    {selectedImageFile ? <ImagePlus aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
                   </div>
-                )}
-              </div>
+                  <p className="mt-3 text-sm font-semibold text-slate-950">
+                    {TEAM_IMAGE_STORAGE_ENABLED ? '클릭해서 이미지 업로드' : '이미지 업로드를 사용할 수 없음'}
+                  </p>
+                  <p className="mt-1.5 max-w-[18rem] text-sm leading-5 text-slate-500">
+                    {TEAM_IMAGE_STORAGE_ENABLED
+                      ? `JPG, PNG, WEBP 파일을 ${imageSizeLimitLabel}까지 업로드할 수 있어요.`
+                      : '스토리지 설정이 준비되면 이곳에서 팀 이미지를 연결할 수 있어요.'}
+                  </p>
+                  {selectedImageFile ? (
+                    <p className="mt-3 text-xs text-slate-500">선택한 파일: {selectedImageFile.name}</p>
+                  ) : null}
+                </label>
 
-              {(team.image_url || selectedImageFile) && TEAM_IMAGE_STORAGE_ENABLED ? (
-                <UiButton
-                  type="button"
-                  variant="outline"
-                  className="w-fit rounded-2xl"
-                  onClick={() => {
-                    setSelectedImageFile(null)
-                    setDraft((current) => ({ ...current, removeImage: true }))
-                  }}
-                >
-                  이미지 제거
-                </UiButton>
-              ) : null}
-            </div>
+                <p className="text-xs text-slate-500">이미지를 선택하지 않으면 기존 이미지나 기본 팀 이미지가 표시돼요.</p>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedImageFile ? (
+                    <UiButton
+                      type="button"
+                      variant="outline"
+                      className="rounded-2xl"
+                      onClick={() => {
+                        setSelectedImageFile(null)
+                        setDraft((current) => ({ ...current, removeImage: false }))
+                        setSaveError('')
+                      }}
+                    >
+                      <X data-icon="inline-start" aria-hidden="true" />
+                      이미지 선택 해제
+                    </UiButton>
+                  ) : null}
+                  {team.image_url && TEAM_IMAGE_STORAGE_ENABLED ? (
+                    <UiButton
+                      type="button"
+                      variant="outline"
+                      className="rounded-2xl border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-700"
+                      onClick={() => {
+                        setSelectedImageFile(null)
+                        setDraft((current) => ({ ...current, removeImage: true }))
+                      }}
+                    >
+                      이미지 제거
+                    </UiButton>
+                  ) : null}
+                </div>
+              </CardContent>
+            </UiCard>
           </div>
 
-          <SheetFooter className="mt-6 flex-col gap-2 sm:flex-row sm:justify-between">
+          <SheetFooter className="mt-6 flex-col gap-2 px-4 sm:flex-row sm:justify-between">
             <UiButton
               type="button"
               variant="outline"

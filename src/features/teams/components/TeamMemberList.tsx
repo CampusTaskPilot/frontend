@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import type { TeamMemberWithProfile } from '../types/team'
@@ -134,6 +135,9 @@ export function TeamMemberList({
             </div>
 
             <div className="flex shrink-0 items-center gap-2 md:pl-4">
+              <Button type="button" size="sm" variant="ghost" asChild>
+                <Link to={`/profile/${member.user_id}`}>프로필 보기</Link>
+              </Button>
               {action && (
                 <Button
                   type="button"

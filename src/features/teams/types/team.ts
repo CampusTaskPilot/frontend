@@ -221,6 +221,21 @@ export interface TeamApplicationSummaryRecord {
   analysis: TeamApplicationAnalysisSummary | null
 }
 
+export type TeamApplicationReviewAction = 'accepted' | 'rejected'
+
+export interface TeamApplicationMutationResult {
+  ok: boolean
+  action: TeamApplicationReviewAction
+  application_id: string
+  team_id: string
+  applicant_user_id: string
+  status: TeamApplicationStatus
+  reviewed_at: string | null
+  reviewed_by_user_id: string | null
+  review_note: string | null
+  message: string
+}
+
 export interface TeamApplicationRecord {
   id: string
   team_id: string

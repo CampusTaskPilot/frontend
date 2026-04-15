@@ -19,8 +19,15 @@ import {
   validateTeamImageFile,
 } from '../features/teams/lib/teamProfileImages'
 import {
+  buildTeamStoryDescription,
+  splitTeamStoryDescription,
+  type TeamStoryField,
+} from '../features/teams/lib/teamStoryDescription'
+import {
   createTeamWithRelations,
   fetchSkillOptions,
+  getTeamCreationErrorMessage,
+  TEAM_SUMMARY_MAX_LENGTH,
 } from '../features/teams/lib/teams'
 import type { SkillOption } from '../features/teams/types/team'
 import { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
@@ -84,6 +91,8 @@ function buildValidationErrors(form: TeamCreateFormState, imageFile: File | null
 
   if (!form.summary.trim()) {
     nextErrors.summary = '한 줄 소개를 입력해 주세요.'
+  } else if (form.summary.trim().length > TEAM_SUMMARY_MAX_LENGTH) {
+    nextErrors.summary = `한 줄 소개는 ${TEAM_SUMMARY_MAX_LENGTH}자 이내로 입력해 주세요.`
   }
 
   if (form.maxMembers.trim()) {
@@ -132,6 +141,7 @@ export function TeamCreatePage() {
 
   const imageSizeLimitLabel = `${Math.round(TEAM_IMAGE_MAX_SIZE_BYTES / 1024 / 1024)}MB 이하`
   const previewName = form.name.trim() || '새 팀'
+  const storyDraft = splitTeamStoryDescription(form.description)
 
   useEffect(() => {
     let isMounted = true
@@ -195,6 +205,15 @@ export function TeamCreatePage() {
     if (key === 'maxMembers') clearFieldError('maxMembers')
   }
 
+  function updateStoryForm(field: TeamStoryField, value: string) {
+    const nextStory = {
+      ...storyDraft,
+      [field]: value,
+    }
+
+    updateForm('description', buildTeamStoryDescription(nextStory))
+  }
+
   function addSkill(skillId: number) {
     if (selectedSkills.includes(skillId)) return
 
@@ -215,15 +234,23 @@ export function TeamCreatePage() {
 
     const nameInput = formElement.elements.namedItem('teamName') as HTMLInputElement | null
     const summaryInput = formElement.elements.namedItem('teamSummary') as HTMLInputElement | null
-    const descriptionInput = formElement.elements.namedItem('teamDescription') as HTMLTextAreaElement | null
+    const directionInput = formElement.elements.namedItem('teamStoryDirection') as HTMLTextAreaElement | null
+    const workflowInput = formElement.elements.namedItem('teamStoryWorkflow') as HTMLTextAreaElement | null
+    const operationInput = formElement.elements.namedItem('teamStoryOperation') as HTMLTextAreaElement | null
     const maxMembersInput = formElement.elements.namedItem('teamMaxMembers') as HTMLInputElement | null
     const categoryInput = formElement.elements.namedItem('teamCategory') as HTMLInputElement | null
     const recruitingInput = document.getElementById('team-create-is-recruiting') as HTMLButtonElement | HTMLInputElement | null
+    const fallbackStory = splitTeamStoryDescription(form.description)
+    const description = buildTeamStoryDescription({
+      direction: directionInput?.value ?? fallbackStory.direction,
+      workflow: workflowInput?.value ?? fallbackStory.workflow,
+      operation: operationInput?.value ?? fallbackStory.operation,
+    })
 
     return {
       name: nameInput?.value ?? form.name,
       summary: summaryInput?.value ?? form.summary,
-      description: descriptionInput?.value ?? form.description,
+      description,
       maxMembers: maxMembersInput?.value ?? form.maxMembers,
       category: categoryInput?.value ?? form.category,
       isRecruiting:
@@ -305,20 +332,7 @@ export function TeamCreatePage() {
 
       navigate(`/teams/${teamId}`, { replace: true })
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message)
-      } else if (
-        typeof error === 'object' &&
-        error !== null &&
-        'message' in error &&
-        typeof (error as { message?: unknown }).message === 'string'
-      ) {
-        setErrorMessage((error as { message: string }).message)
-      } else if (typeof error === 'string') {
-        setErrorMessage(error)
-      } else {
-        setErrorMessage('팀 생성에 실패했어요. 잠시 후 다시 시도해 주세요.')
-      }
+      setErrorMessage(getTeamCreationErrorMessage(error))
     } finally {
       setIsSubmitting(false)
     }
@@ -433,11 +447,12 @@ export function TeamCreatePage() {
                   value={form.summary}
                   onChange={(event) => updateForm('summary', event.target.value)}
                   aria-invalid={Boolean(fieldErrors.summary)}
+                  maxLength={TEAM_SUMMARY_MAX_LENGTH}
                   className="h-12 rounded-2xl px-4 text-sm"
                   {...imeInputProps}
                 />
                 <p className={cn('text-xs', fieldErrors.summary ? 'text-rose-600' : 'text-slate-500')}>
-                  {fieldErrors.summary ?? '짧아도 괜찮아요. 팀의 방향이 보이게 적어 주세요.'}
+                  {fieldErrors.summary ?? `짧아도 괜찮아요. ${form.summary.trim().length}/${TEAM_SUMMARY_MAX_LENGTH}자`}
                 </p>
               </div>
 
@@ -477,31 +492,72 @@ export function TeamCreatePage() {
               </Badge>
             </div>
             <CardDescription className="leading-5">
-              어떤 팀인지, 어떻게 운영할지, 어떤 팀원을 찾는지 편하게 적어 주세요.
+              overview에 그대로 연결되는 방향, 협업 방식, 운영 현황을 나눠서 적어 주세요.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <Label htmlFor="team-create-description" className="text-sm font-semibold text-slate-900">
-              상세 설명
-            </Label>
-            <Textarea
-              id="team-create-description"
-              name="teamDescription"
-              autoComplete="off"
-              placeholder="무엇을 만들지, 어떻게 운영할지, 어떤 팀원을 찾는지 자세히 적어주세요."
-              value={form.description}
-              onChange={(event) => updateForm('description', event.target.value)}
-              className="min-h-[160px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
-              rows={7}
-              {...imeTextareaProps}
-            />
-            <p className="text-xs text-slate-500">
-              문장이 길어도 괜찮아요. 팀 분위기와 방향이 보이게 적어 주세요.
-            </p>
+          <CardContent className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="team-create-story-direction" className="text-sm font-semibold text-slate-900">
+                팀의 방향
+              </Label>
+              <Textarea
+                id="team-create-story-direction"
+                name="teamStoryDirection"
+                autoComplete="off"
+                placeholder="무엇을 만들고 싶은지, 어떤 문제를 해결하려는지 적어주세요."
+                value={storyDraft.direction}
+                onChange={(event) => updateStoryForm('direction', event.target.value)}
+                className="min-h-[116px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                rows={4}
+                {...imeTextareaProps}
+              />
+              <p className="text-xs text-slate-500">overview의 ‘무엇을 목표로 움직이고 있나요’ 카드에 반영돼요.</p>
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="team-create-story-workflow" className="text-sm font-semibold text-slate-900">
+                협업 방식
+              </Label>
+              <Textarea
+                id="team-create-story-workflow"
+                name="teamStoryWorkflow"
+                autoComplete="off"
+                placeholder="어떤 방식으로 회의하고, 업무를 나누고, 결과를 공유할지 적어주세요."
+                value={storyDraft.workflow}
+                onChange={(event) => updateStoryForm('workflow', event.target.value)}
+                className="min-h-[116px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                rows={4}
+                {...imeTextareaProps}
+              />
+              <p className="text-xs text-slate-500">overview의 ‘어떤 방식으로 실행하고 있나요’ 카드에 반영돼요.</p>
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="team-create-story-operation" className="text-sm font-semibold text-slate-900">
+                운영 현황
+              </Label>
+              <Textarea
+                id="team-create-story-operation"
+                name="teamStoryOperation"
+                autoComplete="off"
+                placeholder="현재 팀 단계, 모집 상황, 리더가 공유하고 싶은 운영 맥락을 적어주세요."
+                value={storyDraft.operation}
+                onChange={(event) => updateStoryForm('operation', event.target.value)}
+                className="min-h-[116px] rounded-[1.35rem] px-4 py-3 text-sm leading-7"
+                rows={4}
+                {...imeTextareaProps}
+              />
+              <p className="text-xs text-slate-500">입력한 내용 뒤에 현재 인원과 운영 리더 정보가 함께 표시돼요.</p>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          <Card className="h-full rounded-[1.75rem] border-slate-200/80 shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
           <CardHeader className="gap-1.5">
             <div className="flex items-center gap-2">
               <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">
@@ -586,98 +642,99 @@ export function TeamCreatePage() {
               />
             )}
           </CardContent>
-        </Card>
+          </Card>
 
-        <Card className="rounded-[1.75rem] border-slate-200/80 shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
-          <CardHeader className="gap-2">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">팀 이미지</CardTitle>
-              <Badge variant="outline" className="rounded-full px-2.5 text-[11px]">
-                선택
-              </Badge>
-            </div>
-            <CardDescription className="leading-6">
-              이미지 업로드는 본문 아래에 배치했어요. 스크롤을 내려도 같이 따라오지 않습니다.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.88))] p-2.5">
-              <TeamProfileImage
-                src={previewImageUrl}
-                alt={`${previewName} 팀 이미지 미리보기`}
-                teamName={previewName}
-                className="aspect-[16/7] w-full rounded-[1rem]"
-                priority="editor"
-              />
-            </div>
-
-            <label
-              className={cn(
-                'flex min-h-[136px] cursor-pointer flex-col items-center justify-center rounded-[1.35rem] border border-dashed px-5 py-5 text-center transition-colors',
-                TEAM_IMAGE_STORAGE_ENABLED
-                  ? 'border-slate-300 bg-slate-50/70 hover:border-brand-300 hover:bg-brand-50/60'
-                  : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400',
-                isDraggingImage && TEAM_IMAGE_STORAGE_ENABLED ? 'border-brand-400 bg-brand-50' : '',
-                fieldErrors.image ? 'border-rose-300 bg-rose-50/80' : '',
-              )}
-              onDragEnter={(event) => {
-                event.preventDefault()
-                if (TEAM_IMAGE_STORAGE_ENABLED) {
-                  setIsDraggingImage(true)
-                }
-              }}
-              onDragLeave={(event) => {
-                event.preventDefault()
-                if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-                setIsDraggingImage(false)
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={handleImageDrop}
-            >
-              <input
-                id={fieldIds.image}
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={handleImageInputChange}
-                disabled={!TEAM_IMAGE_STORAGE_ENABLED}
-              />
-              <div className="flex size-12 items-center justify-center rounded-[1.25rem] bg-white text-brand-700 shadow-sm">
-                {selectedImageFile ? <ImagePlus aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+          <Card className="h-full rounded-[1.75rem] border-slate-200/80 shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
+            <CardHeader className="gap-2">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">팀 이미지</CardTitle>
+                <Badge variant="outline" className="rounded-full px-2.5 text-[11px]">
+                  선택
+                </Badge>
               </div>
-              <p className="mt-3 text-sm font-semibold text-slate-950">
-                {TEAM_IMAGE_STORAGE_ENABLED ? '클릭하거나 이미지를 놓아 업로드' : '이미지 업로드를 사용할 수 없음'}
-              </p>
-              <p className="mt-1.5 max-w-[18rem] text-sm leading-5 text-slate-500">
-                {TEAM_IMAGE_STORAGE_ENABLED
-                  ? `JPG, PNG, WEBP 파일을 ${imageSizeLimitLabel}까지 업로드할 수 있어요.`
-                  : '스토리지 설정이 준비되면 이곳에서 팀 이미지를 연결할 수 있어요.'}
-              </p>
-              {selectedImageFile ? (
-                <p className="mt-3 text-xs text-slate-500">선택한 파일: {selectedImageFile.name}</p>
-              ) : null}
-            </label>
+              <CardDescription className="leading-6">
+                기술 및 모집 정보와 함께 대표 이미지를 확인할 수 있어요.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="overflow-hidden rounded-[1.35rem] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.88))] p-2.5">
+                <TeamProfileImage
+                  src={previewImageUrl}
+                  alt={`${previewName} 팀 이미지 미리보기`}
+                  teamName={previewName}
+                  className="aspect-[16/7] w-full rounded-[1rem]"
+                  priority="editor"
+                />
+              </div>
 
-            <p className={cn('text-xs', fieldErrors.image ? 'text-rose-600' : 'text-slate-500')}>
-              {fieldErrors.image ?? '이미지를 선택하지 않으면 기본 팀 이미지가 표시돼요.'}
-            </p>
-
-            {selectedImageFile ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full rounded-2xl"
-                onClick={() => {
-                  setSelectedImageFile(null)
-                  clearFieldError('image')
+              <label
+                className={cn(
+                  'flex min-h-[116px] cursor-pointer flex-col items-center justify-center rounded-[1.35rem] border border-dashed px-5 py-4 text-center transition-colors',
+                  TEAM_IMAGE_STORAGE_ENABLED
+                    ? 'border-slate-300 bg-slate-50/70 hover:border-brand-300 hover:bg-brand-50/60'
+                    : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400',
+                  isDraggingImage && TEAM_IMAGE_STORAGE_ENABLED ? 'border-brand-400 bg-brand-50' : '',
+                  fieldErrors.image ? 'border-rose-300 bg-rose-50/80' : '',
+                )}
+                onDragEnter={(event) => {
+                  event.preventDefault()
+                  if (TEAM_IMAGE_STORAGE_ENABLED) {
+                    setIsDraggingImage(true)
+                  }
                 }}
+                onDragLeave={(event) => {
+                  event.preventDefault()
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                  setIsDraggingImage(false)
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleImageDrop}
               >
-                <X data-icon="inline-start" aria-hidden="true" />
-                이미지 선택 해제
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
+                <input
+                  id={fieldIds.image}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleImageInputChange}
+                  disabled={!TEAM_IMAGE_STORAGE_ENABLED}
+                />
+                <div className="flex size-11 items-center justify-center rounded-[1.25rem] bg-white text-brand-700 shadow-sm">
+                  {selectedImageFile ? <ImagePlus aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                </div>
+                <p className="mt-2.5 text-sm font-semibold text-slate-950">
+                  {TEAM_IMAGE_STORAGE_ENABLED ? '클릭하거나 이미지를 놓아 업로드' : '이미지 업로드를 사용할 수 없음'}
+                </p>
+                <p className="mt-1.5 max-w-[18rem] text-sm leading-5 text-slate-500">
+                  {TEAM_IMAGE_STORAGE_ENABLED
+                    ? `JPG, PNG, WEBP 파일을 ${imageSizeLimitLabel}까지 업로드할 수 있어요.`
+                    : '스토리지 설정이 준비되면 이곳에서 팀 이미지를 연결할 수 있어요.'}
+                </p>
+                {selectedImageFile ? (
+                  <p className="mt-2.5 text-xs text-slate-500">선택한 파일: {selectedImageFile.name}</p>
+                ) : null}
+              </label>
+
+              <p className={cn('text-xs', fieldErrors.image ? 'text-rose-600' : 'text-slate-500')}>
+                {fieldErrors.image ?? '이미지를 선택하지 않으면 기본 팀 이미지가 표시돼요.'}
+              </p>
+
+              {selectedImageFile ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-2xl"
+                  onClick={() => {
+                    setSelectedImageFile(null)
+                    clearFieldError('image')
+                  }}
+                >
+                  <X data-icon="inline-start" aria-hidden="true" />
+                  이미지 선택 해제
+                </Button>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
 
         {errorMessage ? (
           <Alert variant="destructive" className="border-rose-200 bg-rose-50/90" aria-live="polite">

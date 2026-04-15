@@ -192,7 +192,7 @@ export function NotificationBell() {
       </button>
 
       {isOpen ? (
-        <div className="absolute right-0 top-full z-50 mt-3 w-[22rem] rounded-[1.6rem] border border-campus-200 bg-white/97 p-3 shadow-[0_18px_40px_rgba(26,34,51,0.16)] backdrop-blur">
+        <div className="absolute right-0 top-full z-50 mt-3 w-[22rem] rounded-[1.6rem] border border-campus-200 bg-white p-3 shadow-[0_18px_40px_rgba(26,34,51,0.16)]">
           <div className="flex items-center justify-between gap-3 border-b border-campus-100 px-2 pb-3">
             <div>
               <p className="text-sm font-semibold text-campus-900">알림</p>
