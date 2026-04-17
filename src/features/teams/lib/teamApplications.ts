@@ -155,6 +155,22 @@ function mapApplicationSummary(value: unknown): TeamApplicationSummaryRecord {
   }
 }
 
+function localizeApplicationMutationMessage(message: string) {
+  if (message === 'Application accepted.') {
+    return '지원을 승인했습니다.'
+  }
+
+  if (message === 'Application rejected.') {
+    return '지원을 거절했습니다.'
+  }
+
+  if (message === 'Application updated.') {
+    return '지원 상태를 변경했습니다.'
+  }
+
+  return message
+}
+
 function mapApplicationMutationResult(value: unknown): TeamApplicationMutationResult {
   const row = (value ?? {}) as Record<string, unknown>
 
@@ -168,7 +184,10 @@ function mapApplicationMutationResult(value: unknown): TeamApplicationMutationRe
     reviewed_at: typeof row.reviewed_at === 'string' ? row.reviewed_at : null,
     reviewed_by_user_id: typeof row.reviewed_by_user_id === 'string' ? row.reviewed_by_user_id : null,
     review_note: typeof row.review_note === 'string' ? row.review_note : null,
-    message: typeof row.message === 'string' && row.message.trim() ? row.message : 'Application updated.',
+    message:
+      typeof row.message === 'string' && row.message.trim()
+        ? localizeApplicationMutationMessage(row.message)
+        : '지원 상태를 변경했습니다.',
   }
 }
 
@@ -330,7 +349,7 @@ async function runTeamApplicationReviewRpc(
 
   if (error) {
     throw new TeamApplicationApiError(
-      extractSupabaseErrorMessage(error, 'Failed to update the application status.'),
+      extractSupabaseErrorMessage(error, '지원 상태를 변경하지 못했습니다.'),
       400,
       error,
     )

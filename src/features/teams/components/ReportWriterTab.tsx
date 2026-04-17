@@ -1,5 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../../components/ui/Button'
+import { useRef } from 'react'
+import { useCallback } from 'react'
 import { Card } from '../../../components/ui/Card'
 import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { cn } from '../../../lib/cn'
@@ -229,6 +231,38 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
   const [cooldownStatus, setCooldownStatus] = useState<PMReportCooldownStatus | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const isActiveRef = useRef(false)
+
+  useEffect(() => {
+    isActiveRef.current = true
+
+    return () => {
+      isActiveRef.current = false
+    }
+  }, [])
+
+  const refreshCooldownStatus = useCallback(async (signal?: AbortSignal) => {
+    if (!isActiveRef.current) {
+      return null
+    }
+
+    if (reportScope === 'personal' && !currentUserId) {
+      setCooldownStatus(null)
+      return null
+    }
+
+    const result = await fetchPMReportStatus({
+      teamId,
+      reportScope,
+      userId: currentUserId,
+      signal,
+    })
+    if (!isActiveRef.current || signal?.aborted) {
+      return null
+    }
+    setCooldownStatus(result)
+    return result
+  }, [currentUserId, reportScope, teamId])
 
   useEffect(() => {
     if (preset === 'custom') return
@@ -239,23 +273,15 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
 
   useEffect(() => {
     let isMounted = true
+    const controller = new AbortController()
 
     async function loadCooldownStatus() {
-      if (reportScope === 'personal' && !currentUserId) {
-        setCooldownStatus(null)
-        return
-      }
-
       try {
-        const result = await fetchPMReportStatus({
-          teamId,
-          reportScope,
-          userId: currentUserId,
-        })
-        if (isMounted) {
-          setCooldownStatus(result)
+        await refreshCooldownStatus(controller.signal)
+      } catch (error) {
+        if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+          return
         }
-      } catch {
         if (isMounted) {
           setCooldownStatus(null)
         }
@@ -265,8 +291,9 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
     void loadCooldownStatus()
     return () => {
       isMounted = false
+      controller.abort()
     }
-  }, [currentUserId, reportScope, teamId])
+  }, [refreshCooldownStatus])
 
   useEffect(() => {
     if (!cooldownStatus?.cooldown_until) return
@@ -291,13 +318,47 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
     return () => window.clearInterval(timer)
   }, [cooldownStatus?.cooldown_until])
 
+  useEffect(() => {
+    if (!cooldownStatus) return
+    const isServerJobRunning =
+      cooldownStatus.status === 'pending' || cooldownStatus.status === 'running'
+    if (!isServerJobRunning) return
+
+    let controller: AbortController | null = null
+    const timer = window.setInterval(() => {
+      if (!isActiveRef.current) return
+
+      controller?.abort()
+      controller = new AbortController()
+      void refreshCooldownStatus(controller.signal).catch((error) => {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return
+        }
+      })
+    }, 5000)
+
+    return () => {
+      window.clearInterval(timer)
+      controller?.abort()
+    }
+  }, [cooldownStatus?.status, refreshCooldownStatus])
+
   const customValidationError = preset === 'custom' ? validateCustomDateRange(startDate, endDate) : ''
   const scopeValidationError =
     reportScope === 'personal' && !currentUserId
       ? '개인 보고서를 생성하려면 로그인된 사용자 정보가 필요합니다.'
       : ''
+  const isReportRunning = cooldownStatus?.status === 'pending' || cooldownStatus?.status === 'running'
+  const isReportCooldown = cooldownStatus?.status === 'cooldown' || (
+    Boolean(cooldownStatus) &&
+    !isReportRunning &&
+    !cooldownStatus?.can_trigger &&
+    (cooldownStatus?.cooldown_remaining_seconds ?? 0) > 0
+  )
   const cooldownValidationError =
-    cooldownStatus && !cooldownStatus.can_trigger && cooldownStatus.cooldown_remaining_seconds > 0
+    isReportRunning
+      ? '보고서 생성이 진행 중입니다. 완료될 때까지 다시 요청할 수 없습니다.'
+      : isReportCooldown && cooldownStatus && cooldownStatus.cooldown_remaining_seconds > 0
       ? `다시 생성까지 ${formatCooldownMinutes(cooldownStatus.cooldown_remaining_seconds)}분 남았습니다.`
       : ''
   const isCustomMode = preset === 'custom'
@@ -317,6 +378,19 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
     setErrorMessage('')
 
     try {
+      const latestStatus = await refreshCooldownStatus()
+      if (
+        latestStatus &&
+        (!latestStatus.can_trigger ||
+          latestStatus.status === 'pending' ||
+          latestStatus.status === 'running' ||
+          latestStatus.status === 'cooldown')
+      ) {
+        setErrorMessage(latestStatus.message || '이미 보고서 생성이 진행 중이거나 쿨다운 중입니다.')
+        setReportResult(null)
+        return
+      }
+
       const result = await requestPMReport({
         teamId,
         reportScope,
@@ -327,18 +401,21 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
       setReportResult(result)
       setCooldownStatus({
         can_trigger: false,
+        status: 'cooldown',
         cooldown_minutes: result.cooldown_minutes,
         cooldown_remaining_seconds: result.cooldown_remaining_seconds,
         cooldown_until: result.cooldown_until,
         latest_log: null,
         message: null,
       })
+      void refreshCooldownStatus().catch(() => undefined)
     } catch (error) {
       if (error instanceof PMReportApiError && error.payload?.detail && typeof error.payload.detail === 'object') {
         const detail = error.payload.detail
         if (typeof detail.cooldown_remaining_seconds === 'number') {
           setCooldownStatus({
             can_trigger: Boolean(detail.can_trigger),
+            status: detail.status ?? (detail.can_trigger ? 'completed' : 'cooldown'),
             cooldown_minutes: detail.cooldown_minutes ?? 60,
             cooldown_remaining_seconds: detail.cooldown_remaining_seconds,
             cooldown_until: detail.cooldown_until ?? null,
@@ -492,6 +569,8 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
             <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={!canSubmit}>
               {isSubmitting
                 ? '보고서 생성 중...'
+                : isReportRunning
+                  ? '보고서 생성 중...'
                 : cooldownValidationError
                   ? `${formatCooldownMinutes(cooldownStatus?.cooldown_remaining_seconds ?? 0)}분 후 다시 생성`
                   : '보고서 생성'}

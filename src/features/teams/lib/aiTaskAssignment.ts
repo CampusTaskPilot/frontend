@@ -64,12 +64,16 @@ export async function startAiTaskAssignment(params: {
   return parseResponse<AiTaskAssignmentStartResponse>(response)
 }
 
-export async function fetchAiTaskAssignmentStatus(teamId: string): Promise<AiTaskAssignmentStatus> {
+export async function fetchAiTaskAssignmentStatus(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AiTaskAssignmentStatus> {
   const response = await fetch(`${apiBaseUrl}/teams/${teamId}/ai-task-assignment/status`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
     },
+    signal: options?.signal,
   })
 
   return parseResponse<AiTaskAssignmentStatus>(response)

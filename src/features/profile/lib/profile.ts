@@ -1,7 +1,8 @@
 import { supabase } from '../../../lib/supabase'
 import {
-  extractProfileImagePath,
-  removeProfileImageByPath,
+  PROFILE_IMAGE_BUCKET,
+  extractProfileImageReference,
+  removeProfileImageByReference,
   uploadProfileImage,
   validateProfileImageFile,
 } from './profileImages'
@@ -139,7 +140,8 @@ export async function saveProfilePageData(params: {
   )
   const normalizedProjects = normalizeProjectInput(projects)
 
-  const previousImagePath = extractProfileImagePath(currentProfileImageUrl ?? form.profile_image_url)
+  const previousImageReference = extractProfileImageReference(currentProfileImageUrl ?? form.profile_image_url)
+  const previousImagePath = previousImageReference?.path ?? null
   let nextImagePath: string | null = previousImagePath
   let uploadedImagePath: string | null = null
   let nextProfileImageUrl: string | null = removeImage ? null : form.profile_image_url || null
@@ -290,7 +292,7 @@ export async function saveProfilePageData(params: {
     })
 
     if (previousImagePath && previousImagePath !== nextImagePath) {
-      await removeProfileImageByPath(previousImagePath).catch(() => undefined)
+      await removeProfileImageByReference(previousImageReference).catch(() => undefined)
     }
 
     return {
@@ -301,7 +303,14 @@ export async function saveProfilePageData(params: {
     } satisfies SaveProfileResult
   } catch (error) {
     if (uploadedImagePath) {
-      await removeProfileImageByPath(uploadedImagePath).catch(() => undefined)
+      await removeProfileImageByReference(
+        uploadedImagePath
+          ? {
+              bucket: PROFILE_IMAGE_BUCKET,
+              path: uploadedImagePath,
+            }
+          : null,
+      ).catch(() => undefined)
     }
 
     throw error

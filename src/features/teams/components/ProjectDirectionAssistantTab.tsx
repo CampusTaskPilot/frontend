@@ -1,10 +1,5 @@
-import { useMemo, useState } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
-import {
-  generateProjectDirectionOverview,
-  notifyProjectDirectionOverviewUpdated,
-} from '../lib/projectDirectionOverview'
 import { useProjectDirectionOverview } from '../hooks/useProjectDirectionOverview'
 import { ProjectDirectionOverviewPanel } from './ProjectDirectionOverviewPanel'
 
@@ -16,121 +11,122 @@ interface ProjectDirectionAssistantTabProps {
   onOpenCalendar: () => void
 }
 
+function formatElapsed(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const restSeconds = seconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(restSeconds).padStart(2, '0')}`
+}
+
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return '없음'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+function resolveStatusLabel(status: string | undefined) {
+  if (status === 'pending') return '대기 중'
+  if (status === 'running') return '분석 중'
+  if (status === 'cooldown') return '쿨다운'
+  if (status === 'failed') return '실패'
+  if (status === 'completed') return '완료'
+  return '준비됨'
+}
+
 export function ProjectDirectionAssistantTab({
   teamId,
   currentUserId,
-  isLeader,
+  isLeader: _isLeader,
   onOpenTasks,
   onOpenCalendar,
 }: ProjectDirectionAssistantTabProps) {
-  const { overview, isLoading, errorMessage, reload } = useProjectDirectionOverview(teamId, currentUserId)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [submitMessage, setSubmitMessage] = useState('')
-  const [submitError, setSubmitError] = useState('')
+  const { overview, jobStatus, isLoading, errorMessage, reload } = useProjectDirectionOverview(teamId, currentUserId)
 
-  const actionLabel = useMemo(() => {
-    if (isGenerating) return '방향 제안 생성 중...'
-    if (overview) return '다시 추천받기'
-    return '방향 제안 생성하기'
-  }, [isGenerating, overview])
-
-  async function handleGenerate() {
-    if (!currentUserId || isGenerating || !isLeader) {
-      return
-    }
-
-    setIsGenerating(true)
-    setSubmitError('')
-    setSubmitMessage('')
-
-    try {
-      await generateProjectDirectionOverview({
-        teamId,
-        requestedBy: currentUserId,
-      })
-      notifyProjectDirectionOverviewUpdated(teamId)
-      await reload()
-      setSubmitMessage(
-        overview ? '방향 제안을 새 내용으로 갱신했어요. 업무 탭에서도 같은 결과를 바로 볼 수 있습니다.' : '방향 제안을 생성하고 저장했어요. 업무 탭에서도 바로 확인할 수 있습니다.',
-      )
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : '방향 제안을 생성하지 못했습니다.')
-    } finally {
-      setIsGenerating(false)
-    }
-  }
+  const remainingSeconds = jobStatus?.remaining_seconds ?? 0
+  const isRunning = jobStatus?.status === 'pending' || jobStatus?.status === 'running'
+  const isCooldown = jobStatus?.status === 'cooldown' || (!jobStatus?.can_trigger && remainingSeconds > 0)
 
   return (
     <div className="relative space-y-4">
-      {isGenerating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 px-4 py-8 backdrop-blur-[3px]">
-          <div className="w-full max-w-md rounded-3xl border border-brand-100 bg-white px-6 py-6 text-center shadow-xl">
-            <div className="mx-auto flex h-12 w-12 animate-spin items-center justify-center rounded-full border-4 border-brand-100 border-t-brand-500" />
-            <p className="mt-4 font-medium text-campus-900">프로젝트 방향을 정리하고 있어요...</p>
-            <p className="mt-2 text-sm leading-6 text-campus-600">
-              현재 Task, Todo, 일정 흐름을 바탕으로 다음 단계 제안을 생성한 뒤 팀 overview로 저장합니다.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className={isGenerating ? 'pointer-events-none select-none opacity-60' : ''} aria-busy={isGenerating}>
+      <div>
         <Card className="space-y-5 overflow-hidden border-brand-100 bg-gradient-to-br from-white via-campus-50 to-brand-50">
           <div className="space-y-3">
             <span className="inline-flex rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-700">
               PM Assistant
             </span>
             <div className="space-y-2">
-              <h2 className="font-display text-3xl text-campus-900">프로젝트가 지금 어디에 집중하면 좋을지 추천해드려요</h2>
+              <h2 className="font-display text-3xl text-campus-900">프로젝트의 다음 방향을 정리해보세요</h2>
               <p className="max-w-2xl text-sm leading-6 text-campus-600">
-                업무 탭의 실제 Task, Todo, 일정 정보를 바탕으로 다음 방향을 짧고 선명하게 정리합니다.
-                생성된 결과는 팀의 방향 제안 overview로 저장되고, 업무 탭에서도 같은 내용을 바로 보여줍니다.
+                현재 Task, Todo, 일정 데이터를 기준으로 저장된 방향 제안 결과를 확인할 수 있습니다. 이번 정리에서는
+                실행 버튼과 시작 요청 흐름을 숨기고, 기존 결과와 서버 상태만 보여주도록 조정했습니다.
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-campus-200 bg-white/80 p-4">
-            <div>
-              <p className="text-sm font-semibold text-campus-900">팀 방향 제안을 지금 다시 만들 수 있어요</p>
-              <p className="mt-1 text-sm text-campus-600">
-                저장된 값이 있으면 업데이트하고, 없으면 새로 생성합니다.
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-campus-900">상태와 최근 기록은 서버 기준으로 표시됩니다</p>
+              <p className="text-sm text-campus-600">
+                저장된 최근 실행 시각과 남은 쿨다운 시간을 참고해 이전 분석 상태를 확인할 수 있습니다.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="ghost" onClick={onOpenTasks}>
-                업무 탭 보기
-              </Button>
-              <Button type="button" onClick={() => void handleGenerate()} disabled={!currentUserId || !isLeader || isGenerating}>
-                {actionLabel}
+                업무 보러가기
               </Button>
             </div>
           </div>
 
-          {!isLeader && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              방향 제안 생성과 갱신은 팀 리더만 실행할 수 있습니다. 저장된 결과는 팀원도 함께 볼 수 있어요.
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-campus-200 bg-white px-4 py-3">
+              <p className="text-xs text-campus-500">현재 상태</p>
+              <p className="mt-1 font-semibold text-campus-900">{resolveStatusLabel(jobStatus?.status)}</p>
             </div>
-          )}
-          {!currentUserId && (
+            <div className="rounded-2xl border border-campus-200 bg-white px-4 py-3">
+              <p className="text-xs text-campus-500">최근 실행</p>
+              <p className="mt-1 font-semibold text-campus-900">{formatTimestamp(jobStatus?.latest_log?.started_at)}</p>
+            </div>
+            <div className="rounded-2xl border border-campus-200 bg-white px-4 py-3">
+              <p className="text-xs text-campus-500">남은 쿨다운</p>
+              <p className="mt-1 font-semibold text-campus-900">{remainingSeconds > 0 ? formatElapsed(remainingSeconds) : '없음'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-campus-200 bg-white/80 px-4 py-3 text-sm text-campus-700">
+            방향 제안 실행 버튼은 현재 숨김 처리되어 있습니다. 이 탭에서는 저장된 결과와 서버 상태만 확인할 수 있습니다.
+          </div>
+
+          {isRunning ? (
+            <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+              이전에 시작된 방향 분석이 아직 진행 중입니다. 완료되면 저장된 결과가 자동으로 반영됩니다.
+            </div>
+          ) : null}
+
+          {isCooldown ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              <span>재실행 쿨다운 기록이 남아 있습니다.</span>
+              <span className="font-medium tabular-nums">{formatElapsed(remainingSeconds)}</span>
+            </div>
+          ) : null}
+
+          {jobStatus?.status === 'failed' && jobStatus.message ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              로그인 정보가 확인되지 않아 방향 제안을 생성할 수 없습니다.
+              최근 분석이 실패 상태로 남아 있습니다. {jobStatus.message}
             </div>
-          )}
-          {submitError && (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {submitError}
-            </div>
-          )}
-          {submitMessage && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {submitMessage}
-            </div>
-          )}
-          {errorMessage && !isLoading && !overview && (
+          ) : null}
+
+          {errorMessage && !isLoading && !overview ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {errorMessage}
             </div>
-          )}
+          ) : null}
         </Card>
 
         <ProjectDirectionOverviewPanel
@@ -139,14 +135,14 @@ export function ProjectDirectionAssistantTab({
           overviewData={overview}
           isLoadingOverride={isLoading}
           errorMessageOverride={errorMessage}
-          onReloadOverride={reload}
-          title="저장된 방향 제안"
-          subtitle="여기서 보는 결과는 업무 탭 위젯과 같은 저장 데이터입니다."
-          emptyActionLabel="방향 제안 생성하기"
-          emptyActionDisabled={!currentUserId || !isLeader}
+          onReloadOverride={() => void reload()}
+          title="최근 방향 제안"
+          subtitle="현재 보이는 내용은 서버에 저장된 최신 방향 제안 결과입니다."
+          emptyActionLabel=""
+          emptyActionDisabled
           showReloadAction={false}
           hideAssistantAction
-          onOpenAssistant={() => void handleGenerate()}
+          onOpenAssistant={undefined}
           onOpenTasks={onOpenTasks}
           onOpenCalendar={onOpenCalendar}
         />

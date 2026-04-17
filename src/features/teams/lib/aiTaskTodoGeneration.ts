@@ -83,12 +83,16 @@ export async function startAiTodoGeneration(params: {
   }
 }
 
-export async function fetchAiTodoGenerationStatus(taskId: string): Promise<AiTodoGenerationStatus> {
+export async function fetchAiTodoGenerationStatus(
+  taskId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AiTodoGenerationStatus> {
   const response = await fetch(`${apiBaseUrl}/tasks/${taskId}/ai-todo-generation/status`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
     },
+    signal: options?.signal,
   })
 
   return parseResponse<AiTodoGenerationStatus>(response)
@@ -97,6 +101,7 @@ export async function fetchAiTodoGenerationStatus(taskId: string): Promise<AiTod
 export async function fetchAiTodoGenerationStatuses(
   teamId: string,
   taskIds: string[],
+  options?: { signal?: AbortSignal },
 ): Promise<Record<string, AiTodoGenerationStatus>> {
   if (taskIds.length === 0) {
     return {}
@@ -110,6 +115,7 @@ export async function fetchAiTodoGenerationStatuses(
     headers: {
       Accept: 'application/json',
     },
+    signal: options?.signal,
   })
   const payload = await parseResponse<{ statuses: Record<string, AiTodoGenerationStatus> }>(response)
   return payload.statuses ?? {}

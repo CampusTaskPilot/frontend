@@ -2,17 +2,12 @@ import { useEffect, useState } from 'react'
 import { Card } from '../../../components/ui/Card'
 import type { TeamMemberWithProfile } from '../types/team'
 import { MeetingActionizerTab } from './MeetingActionizerTab'
-import { ProjectDirectionAssistantTab } from './ProjectDirectionAssistantTab'
 import { ReportWriterTab } from './ReportWriterTab'
 
 export type PMAssistantTabKey = 'direction' | 'meeting-actionizer' | 'report-writer'
+type VisiblePMAssistantTabKey = Exclude<PMAssistantTabKey, 'direction'>
 
-const pmAssistantTabs: Array<{ key: PMAssistantTabKey; label: string; description: string }> = [
-  {
-    key: 'direction',
-    label: '방향 제안',
-    description: '현재 프로젝트 흐름을 보고 다음 우선순위를 추천합니다.',
-  },
+const pmAssistantTabs: Array<{ key: VisiblePMAssistantTabKey; label: string; description: string }> = [
   {
     key: 'meeting-actionizer',
     label: '회의 액션 정리',
@@ -35,19 +30,26 @@ interface TeamPMTabProps {
   initialTab?: PMAssistantTabKey
 }
 
+function normalizePMAssistantTab(tab: PMAssistantTabKey): VisiblePMAssistantTabKey {
+  if (tab === 'report-writer') {
+    return 'report-writer'
+  }
+  return 'meeting-actionizer'
+}
+
 export function TeamPMTab({
   teamId,
   currentUserId,
   isLeader,
   members,
   onOpenTasks,
-  onOpenCalendar,
-  initialTab = 'direction',
+  onOpenCalendar: _onOpenCalendar,
+  initialTab = 'meeting-actionizer',
 }: TeamPMTabProps) {
-  const [activeTab, setActiveTab] = useState<PMAssistantTabKey>(initialTab)
+  const [activeTab, setActiveTab] = useState<VisiblePMAssistantTabKey>(normalizePMAssistantTab(initialTab))
 
   useEffect(() => {
-    setActiveTab(initialTab)
+    setActiveTab(normalizePMAssistantTab(initialTab))
   }, [initialTab])
 
   return (
@@ -56,11 +58,11 @@ export function TeamPMTab({
         <div className="space-y-1">
           <h1 className="font-display text-2xl text-campus-900">PM Assistant</h1>
           <p className="text-sm text-campus-600">
-            팀 운영에 필요한 방향 제안, 회의 정리, 보고서 작성을 한 흐름 안에서 도와주는 AI 보조 공간입니다.
+            팀 운영에 필요한 회의 정리와 보고서 작성을 한 곳에서 도와주는 AI 보조 공간입니다.
           </p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           {pmAssistantTabs.map((tab) => (
             <button
               key={tab.key}
@@ -79,16 +81,6 @@ export function TeamPMTab({
           ))}
         </div>
       </Card>
-
-      {activeTab === 'direction' && (
-        <ProjectDirectionAssistantTab
-          teamId={teamId}
-          currentUserId={currentUserId}
-          isLeader={isLeader}
-          onOpenTasks={onOpenTasks}
-          onOpenCalendar={onOpenCalendar}
-        />
-      )}
 
       {activeTab === 'meeting-actionizer' && (
         <MeetingActionizerTab

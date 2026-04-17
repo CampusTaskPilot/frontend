@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
 import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
@@ -15,6 +15,7 @@ import { createCalendarEvent } from '../lib/teamCalendar'
 import type {
   MeetingActionizerCalendarEventDraft,
   MeetingActionizerResponse,
+  MeetingActionizerStatus,
   MeetingActionizerTaskDraft,
   TeamCalendarEventRecord,
   TeamMemberWithProfile,
@@ -175,6 +176,28 @@ export function MeetingActionizerTab({
   const [successMessage, setSuccessMessage] = useState('')
   const [cooldownUntil, setCooldownUntil] = useState<string | null>(null)
   const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const [actionizerStatus, setActionizerStatus] = useState<MeetingActionizerStatus | null>(null)
+  const isActiveRef = useRef(false)
+
+  useEffect(() => {
+    isActiveRef.current = true
+
+    return () => {
+      isActiveRef.current = false
+    }
+  }, [])
+
+  const refreshActionizerStatus = useCallback(async (signal?: AbortSignal) => {
+    if (!isActiveRef.current) return null
+
+    const status = await fetchMeetingActionizerStatus(teamId, { signal })
+    if (!isActiveRef.current || signal?.aborted) return null
+
+    setActionizerStatus(status)
+    setCooldownUntil(status.cooldown_until ?? status.available_at)
+    setRemainingSeconds(status.remaining_seconds)
+    return status
+  }, [teamId])
 
   useEffect(() => {
     if (!participantInput.trim() && participantPlaceholder) {
@@ -184,15 +207,17 @@ export function MeetingActionizerTab({
 
   useEffect(() => {
     let isMounted = true
+    const controller = new AbortController()
 
     async function loadCooldownStatus() {
       try {
-        const status = await fetchMeetingActionizerStatus(teamId)
+        await refreshActionizerStatus(controller.signal)
+      } catch (error) {
+        if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+          return
+        }
         if (!isMounted) return
-        setCooldownUntil(status.available_at)
-        setRemainingSeconds(status.remaining_seconds)
-      } catch {
-        if (!isMounted) return
+        setActionizerStatus(null)
         setCooldownUntil(null)
         setRemainingSeconds(0)
       }
@@ -202,8 +227,9 @@ export function MeetingActionizerTab({
 
     return () => {
       isMounted = false
+      controller.abort()
     }
-  }, [teamId])
+  }, [refreshActionizerStatus])
 
   useEffect(() => {
     if (!cooldownUntil) return
@@ -211,6 +237,15 @@ export function MeetingActionizerTab({
     const timer = window.setInterval(() => {
       const next = Math.max(Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / 1000), 0)
       setRemainingSeconds(next)
+      setActionizerStatus((current) =>
+        current
+          ? {
+              ...current,
+              can_trigger: next === 0 && current.status !== 'pending' && current.status !== 'running',
+              remaining_seconds: next,
+            }
+          : current,
+      )
       if (next === 0) {
         setCooldownUntil(null)
       }
@@ -218,6 +253,40 @@ export function MeetingActionizerTab({
 
     return () => window.clearInterval(timer)
   }, [cooldownUntil])
+
+  useEffect(() => {
+    if (!actionizerStatus) return
+    const isServerJobRunning =
+      actionizerStatus.status === 'pending' || actionizerStatus.status === 'running'
+    if (!isServerJobRunning) return
+
+    let controller: AbortController | null = null
+    const timer = window.setInterval(() => {
+      if (!isActiveRef.current) return
+
+      controller?.abort()
+      controller = new AbortController()
+      void refreshActionizerStatus(controller.signal).catch((error) => {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return
+        }
+      })
+    }, 5000)
+
+    return () => {
+      window.clearInterval(timer)
+      controller?.abort()
+    }
+  }, [actionizerStatus?.status, refreshActionizerStatus])
+
+  const isDbRunning = actionizerStatus?.status === 'pending' || actionizerStatus?.status === 'running'
+  const isDbCooldown = actionizerStatus?.status === 'cooldown' || (
+    Boolean(actionizerStatus) &&
+    !isDbRunning &&
+    !actionizerStatus?.can_trigger &&
+    remainingSeconds > 0
+  )
+  const isActionizerBlocked = isDbRunning || isDbCooldown
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     if (isAnalyzing) return
@@ -269,6 +338,24 @@ export function MeetingActionizerTab({
       return
     }
 
+    let latestStatus: MeetingActionizerStatus | null = null
+    try {
+      latestStatus = await refreshActionizerStatus()
+    } catch {
+      latestStatus = actionizerStatus
+    }
+
+    if (
+      latestStatus &&
+      (!latestStatus.can_trigger ||
+        latestStatus.status === 'pending' ||
+        latestStatus.status === 'running' ||
+        latestStatus.status === 'cooldown')
+    ) {
+      setErrorMessage(latestStatus.message || '이미 회의 분석이 진행 중이거나 쿨다운 중입니다.')
+      return
+    }
+
     if (remainingSeconds > 0) {
       setErrorMessage(`다시 실행까지 ${Math.ceil(remainingSeconds / 60)}분 남았습니다.`)
       return
@@ -292,7 +379,18 @@ export function MeetingActionizerTab({
       setResult(response)
       setCooldownUntil(response.cooldown_until)
       setRemainingSeconds(response.remaining_seconds)
+      setActionizerStatus((current) => ({
+        status: 'cooldown',
+        can_trigger: false,
+        cooldown_minutes: current?.cooldown_minutes ?? 60,
+        remaining_seconds: response.remaining_seconds,
+        available_at: response.cooldown_until,
+        cooldown_until: response.cooldown_until,
+        latest_log: current?.latest_log ?? null,
+        message: null,
+      }))
       applySelectionState(response)
+      void refreshActionizerStatus().catch(() => undefined)
     } catch (error) {
       setResult(null)
       setSelectedTaskIds([])
@@ -304,15 +402,21 @@ export function MeetingActionizerTab({
         error.payload &&
         typeof error.payload === 'object'
       ) {
-        const payload = error.payload as { available_at?: string; remaining_seconds?: number }
-        if (payload.available_at) {
-          setCooldownUntil(payload.available_at)
+        const payload = error.payload as {
+          available_at?: string
+          cooldown_until?: string
+          remaining_seconds?: number
+          status?: MeetingActionizerStatus['status']
+        }
+        if (payload.available_at || payload.cooldown_until) {
+          setCooldownUntil(payload.cooldown_until ?? payload.available_at ?? null)
         }
         if (typeof payload.remaining_seconds === 'number') {
           setRemainingSeconds(payload.remaining_seconds)
         }
       }
       setErrorMessage(error instanceof Error ? error.message : '회의 실행화 요청에 실패했습니다.')
+      void refreshActionizerStatus().catch(() => undefined)
     } finally {
       setIsAnalyzing(false)
       setIsSubmitting(false)
@@ -439,7 +543,7 @@ export function MeetingActionizerTab({
 
   return (
     <div className="relative space-y-4">
-      {isAnalyzing && (
+      {(isAnalyzing || isDbRunning) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 px-4 py-8 backdrop-blur-[3px]">
           <div className="w-full max-w-md rounded-3xl border border-brand-100 bg-white px-6 py-6 text-center shadow-xl">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border-4 border-brand-100 border-t-brand-500 animate-spin" />
@@ -454,9 +558,9 @@ export function MeetingActionizerTab({
       <div
         className={cn(
           'space-y-4 transition-opacity',
-          isAnalyzing && 'pointer-events-none select-none opacity-60',
+          (isAnalyzing || isDbRunning) && 'pointer-events-none select-none opacity-60',
         )}
-        aria-busy={isAnalyzing}
+        aria-busy={isAnalyzing || isDbRunning}
       >
       <Card className="space-y-4">
         <div className="space-y-1">
@@ -468,7 +572,7 @@ export function MeetingActionizerTab({
         </div>
 
         <form className="space-y-4" onSubmit={ime.createSubmitHandler(handleSubmit)} noValidate>
-          <fieldset disabled={isAnalyzing} className="space-y-4">
+          <fieldset disabled={isAnalyzing || isDbRunning} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm font-medium text-campus-700">
               <span>회의 제목</span>
@@ -542,6 +646,11 @@ export function MeetingActionizerTab({
               {successMessage}
             </div>
           )}
+          {isDbRunning && (
+            <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+              회의 분석이 진행 중입니다. 완료될 때까지 다시 요청할 수 없습니다.
+            </div>
+          )}
           {remainingSeconds > 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               다시 실행까지 {Math.ceil(remainingSeconds / 60)}분 남았습니다.
@@ -549,7 +658,11 @@ export function MeetingActionizerTab({
           )}
 
           <div className="flex justify-end">
-            <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={isSubmitting || remainingSeconds > 0}>
+            <Button
+              type="submit"
+              onMouseDown={ime.preventBlurOnMouseDown}
+              disabled={isSubmitting || isActionizerBlocked || remainingSeconds > 0}
+            >
               {isSubmitting ? '분석 중...' : '분석하기'}
             </Button>
           </div>

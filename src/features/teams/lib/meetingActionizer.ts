@@ -5,7 +5,9 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/
 interface ApiErrorShape {
   message?: string
   reason?: string
+  status?: MeetingActionizerStatus['status']
   available_at?: string
+  cooldown_until?: string
   remaining_seconds?: number
 }
 
@@ -86,12 +88,16 @@ export async function requestMeetingActionizer(params: {
   }
 }
 
-export async function fetchMeetingActionizerStatus(teamId: string): Promise<MeetingActionizerStatus> {
+export async function fetchMeetingActionizerStatus(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<MeetingActionizerStatus> {
   const response = await fetch(`${apiBaseUrl}/pm-assistant/meeting-actionize/status?team_id=${teamId}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
     },
+    signal: options?.signal,
   })
 
   return parseResponse<MeetingActionizerStatus>(response)

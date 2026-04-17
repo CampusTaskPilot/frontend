@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  fetchProjectDirectionOverview,
+  fetchProjectDirectionStatus,
   subscribeProjectDirectionOverviewUpdated,
 } from '../lib/projectDirectionOverview'
-import type { ProjectDirectionOverview } from '../types/team'
+import type { ProjectDirectionOverview, ProjectDirectionStatusInfo } from '../types/team'
 
 interface UseProjectDirectionOverviewResult {
   overview: ProjectDirectionOverview | null
+  jobStatus: ProjectDirectionStatusInfo | null
   isLoading: boolean
   errorMessage: string
-  reload: () => Promise<void>
+  reload: () => Promise<ProjectDirectionStatusInfo | null>
+}
+
+function shouldPoll(statusInfo: ProjectDirectionStatusInfo | null) {
+  if (!statusInfo) return false
+  return statusInfo.status === 'pending' || statusInfo.status === 'running' || statusInfo.status === 'cooldown'
 }
 
 export function useProjectDirectionOverview(
@@ -18,55 +24,75 @@ export function useProjectDirectionOverview(
   enabled = true,
 ): UseProjectDirectionOverviewResult {
   const [overview, setOverview] = useState<ProjectDirectionOverview | null>(null)
+  const [jobStatus, setJobStatus] = useState<ProjectDirectionStatusInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
 
-  const load = useCallback(async () => {
-    if (!enabled) {
-      setIsLoading(false)
-      return
-    }
+  const load = useCallback(
+    async (silent = false) => {
+      if (!enabled) {
+        setIsLoading(false)
+        return null
+      }
 
-    if (!teamId || !currentUserId) {
-      setOverview(null)
+      if (!teamId || !currentUserId) {
+        setOverview(null)
+        setJobStatus(null)
+        setErrorMessage('')
+        setIsLoading(false)
+        return null
+      }
+
+      if (!silent) {
+        setIsLoading(true)
+      }
       setErrorMessage('')
-      setIsLoading(false)
-      return
-    }
 
-    setIsLoading(true)
-    setErrorMessage('')
-
-    try {
-      const result = await fetchProjectDirectionOverview(teamId, currentUserId)
-      setOverview(result)
-    } catch (error) {
-      setOverview(null)
-      setErrorMessage(error instanceof Error ? error.message : '방향 제안을 불러오지 못했습니다.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [currentUserId, enabled, teamId])
+      try {
+        const result = await fetchProjectDirectionStatus(teamId, currentUserId)
+        setJobStatus(result)
+        setOverview(result.overview)
+        return result
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to load project direction status.')
+        return null
+      } finally {
+        if (!silent) {
+          setIsLoading(false)
+        }
+      }
+    },
+    [currentUserId, enabled, teamId],
+  )
 
   useEffect(() => {
-    void load()
+    void load(false)
   }, [load])
 
   useEffect(() => {
-    if (!enabled) return undefined
-
-    if (!teamId) return undefined
+    if (!enabled || !teamId) return undefined
 
     return subscribeProjectDirectionOverviewUpdated((updatedTeamId) => {
       if (updatedTeamId !== teamId) return
-      void load()
+      void load(true)
     })
   }, [enabled, load, teamId])
 
+  useEffect(() => {
+    if (!shouldPoll(jobStatus)) return undefined
+
+    const timer = window.setInterval(() => {
+      void load(true)
+    }, 5000)
+
+    return () => window.clearInterval(timer)
+  }, [jobStatus?.status, load])
+
   return {
     overview,
+    jobStatus,
     isLoading,
     errorMessage,
-    reload: load,
+    reload: () => load(false),
   }
 }

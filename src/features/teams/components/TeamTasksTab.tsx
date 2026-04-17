@@ -196,6 +196,10 @@ const bodyScrollOverflowKey = 'taskpilotBodyScrollOverflow'
 let modalLayerSequence = 0
 const openModalLayers: number[] = []
 
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
 function lockBodyScroll() {
   const currentCount = Number(document.body.dataset[bodyScrollLockCountKey] ?? '0')
 
@@ -490,6 +494,15 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const isSavingRef = useRef(false)
   const hasLoadedRef = useRef(false)
   const restoredWorkspaceDraftRef = useRef(false)
+  const isActiveRef = useRef(false)
+
+  useEffect(() => {
+    isActiveRef.current = true
+
+    return () => {
+      isActiveRef.current = false
+    }
+  }, [])
 
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.user_id, member] as const)),
@@ -1087,42 +1100,56 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     })
   }, [])
 
-  const loadAiStatus = useCallback(async () => {
+  const loadAiStatus = useCallback(async (signal?: AbortSignal) => {
+    if (!isActiveRef.current) return
+
     try {
-      const result = await fetchAiTaskGenerationStatus(teamId)
+      const result = await fetchAiTaskGenerationStatus(teamId, { signal })
+      if (!isActiveRef.current || signal?.aborted) return
       syncAiGenerationStatus(result)
     } catch (error) {
+      if (signal?.aborted || isAbortError(error)) return
       setAiNotice(error instanceof Error ? error.message : 'AI Task 상태를 불러오지 못했습니다.')
     }
   }, [syncAiGenerationStatus, teamId])
 
-  const loadAiAssignmentStatus = useCallback(async () => {
+  const loadAiAssignmentStatus = useCallback(async (signal?: AbortSignal) => {
+    if (!isActiveRef.current) return
+
     try {
-      const result = await fetchAiTaskAssignmentStatus(teamId)
+      const result = await fetchAiTaskAssignmentStatus(teamId, { signal })
+      if (!isActiveRef.current || signal?.aborted) return
       syncAiAssignmentStatus(result)
     } catch (error) {
+      if (signal?.aborted || isAbortError(error)) return
       setErrorMessage(error instanceof Error ? error.message : 'AI 업무 자동 배분 상태를 불러오지 못했습니다.')
     }
   }, [syncAiAssignmentStatus, teamId])
 
-  const loadAiTodoStatus = useCallback(async (taskId: string) => {
+  const loadAiTodoStatus = useCallback(async (taskId: string, signal?: AbortSignal) => {
+    if (!isActiveRef.current) return
+
     console.log('[AI Todo] requesting single status', { taskId })
     try {
-      const result = await fetchAiTodoGenerationStatus(taskId)
+      const result = await fetchAiTodoGenerationStatus(taskId, { signal })
+      if (!isActiveRef.current || signal?.aborted) return
       console.log('[AI Todo] single status payload', { taskId, result })
       syncAiTodoStatus(taskId, result)
     } catch (error) {
+      if (signal?.aborted || isAbortError(error)) return
       console.error('[AI Todo] single status error', { taskId, error })
       throw error
     }
   }, [syncAiTodoStatus])
 
-  const loadAiTodoStatuses = useCallback(async (taskIds: string[]) => {
+  const loadAiTodoStatuses = useCallback(async (taskIds: string[], signal?: AbortSignal) => {
+    if (!isActiveRef.current) return
     if (taskIds.length === 0) {
       return
     }
 
-    const statuses = await fetchAiTodoGenerationStatuses(teamId, taskIds)
+    const statuses = await fetchAiTodoGenerationStatuses(teamId, taskIds, { signal })
+    if (!isActiveRef.current || signal?.aborted) return
     console.log('[AI Todo] batch status payload', { teamId, taskIds, statuses })
     const nextActiveJobs = { ...activeAiTodoJobIdsRef.current }
 
@@ -1140,11 +1167,21 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }, [mergeAiTodoStatuses, teamId])
 
   useEffect(() => {
-    void loadAiStatus()
+    const controller = new AbortController()
+    void loadAiStatus(controller.signal)
+
+    return () => {
+      controller.abort()
+    }
   }, [loadAiStatus])
 
   useEffect(() => {
-    void loadAiAssignmentStatus()
+    const controller = new AbortController()
+    void loadAiAssignmentStatus(controller.signal)
+
+    return () => {
+      controller.abort()
+    }
   }, [loadAiAssignmentStatus])
 
   const persistedTaskIds = useMemo(
@@ -1174,12 +1211,13 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     }
 
     let cancelled = false
+    const controller = new AbortController()
 
     void (async () => {
       try {
-        await loadAiTodoStatuses(missingTaskIds)
+        await loadAiTodoStatuses(missingTaskIds, controller.signal)
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !controller.signal.aborted && !isAbortError(error)) {
           setErrorMessage(error instanceof Error ? error.message : 'AI Todo 상태를 불러오지 못했습니다.')
         }
       }
@@ -1187,30 +1225,43 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [isLeader, loadAiTodoStatuses, persistedTaskIds, persistedTaskIdsKey])
 
   useEffect(() => {
     if (!isAiGenerating) return
 
+    let controller: AbortController | null = null
     const interval = window.setInterval(() => {
-      void loadAiStatus()
+      if (!isActiveRef.current) return
+
+      controller?.abort()
+      controller = new AbortController()
+      void loadAiStatus(controller.signal)
     }, 3000)
 
     return () => {
       window.clearInterval(interval)
+      controller?.abort()
     }
   }, [isAiGenerating, loadAiStatus])
 
   useEffect(() => {
     if (!isAiAssigning) return
 
+    let controller: AbortController | null = null
     const interval = window.setInterval(() => {
-      void loadAiAssignmentStatus()
+      if (!isActiveRef.current) return
+
+      controller?.abort()
+      controller = new AbortController()
+      void loadAiAssignmentStatus(controller.signal)
     }, 3000)
 
     return () => {
       window.clearInterval(interval)
+      controller?.abort()
     }
   }, [isAiAssigning, loadAiAssignmentStatus])
 
@@ -1221,13 +1272,21 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
     if (runningAiTodoTaskIds.length === 0) return
 
+    let controller: AbortController | null = null
     const interval = window.setInterval(() => {
+      if (!isActiveRef.current) return
+
       console.log('[AI Todo] polling tick', { runningTaskIds: runningAiTodoTaskIds })
-      void Promise.allSettled(runningAiTodoTaskIds.map((taskId) => loadAiTodoStatus(taskId)))
+      controller?.abort()
+      controller = new AbortController()
+      void Promise.allSettled(
+        runningAiTodoTaskIds.map((taskId) => loadAiTodoStatus(taskId, controller?.signal)),
+      )
     }, 3000)
 
     return () => {
       window.clearInterval(interval)
+      controller?.abort()
     }
   }, [loadAiTodoStatus, runningAiTodoTaskIds, runningAiTodoTaskIdsKey])
 
@@ -2628,12 +2687,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 )}
               </div>
             )}
-            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-2xl border border-campus-200 bg-white p-1 shadow-sm xl:w-auto">
+            <div className="grid w-full grid-cols-2 items-center gap-1 rounded-2xl border border-campus-200 bg-white p-1 shadow-sm xl:w-auto">
               <button
                 type="button"
                 onClick={() => setActiveView('active')}
                 className={cn(
-                  'flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition xl:flex-none',
+                  'min-w-0 rounded-2xl px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition',
                   activeView === 'active'
                     ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-inset ring-brand-100'
                     : 'text-campus-600 hover:bg-campus-50',
@@ -2645,7 +2704,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 type="button"
                 onClick={() => setActiveView('completed')}
                 className={cn(
-                  'flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition xl:flex-none',
+                  'min-w-0 rounded-2xl px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition',
                   activeView === 'completed'
                     ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-inset ring-brand-100'
                     : 'text-campus-600 hover:bg-campus-50',
@@ -2693,7 +2752,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   : 'border-campus-200 text-campus-700',
               )}
             >
-              <span>{showMineOnly ? '할당된 Task만' : '전체 Task 보기'}</span>
+              <span>{showMineOnly ? '내 Task만' : '전체 보기'}</span>
               <span className="text-xs">{showMineOnly ? 'ON' : 'OFF'}</span>
             </button>
           </label>

@@ -15,7 +15,7 @@ export interface StorageImageValidationOptions {
 }
 
 export interface CreateStorageImagePathOptions {
-  root: string
+  root?: string
   ownerId: string
   prefix: string
   fileName: string
@@ -27,6 +27,56 @@ export interface UploadPublicStorageImageOptions {
   bucket: string
   path: string
   file: File
+}
+
+function describeStorageError(error: unknown, context: { bucket: string; path: string }) {
+  if (!error || typeof error !== 'object') {
+    return `Storage upload failed for ${context.bucket}/${context.path}.`
+  }
+
+  const message = typeof (error as { message?: unknown }).message === 'string' ? (error as { message: string }).message : ''
+  const code = typeof (error as { error?: unknown }).error === 'string' ? (error as { error: string }).error : ''
+  const status = typeof (error as { status?: unknown }).status === 'number' ? (error as { status: number }).status : null
+  const statusCode =
+    typeof (error as { statusCode?: unknown }).statusCode === 'string'
+      ? (error as { statusCode: string }).statusCode
+      : typeof (error as { statusCode?: unknown }).statusCode === 'number'
+        ? String((error as { statusCode: number }).statusCode)
+        : ''
+
+  const parts = [
+    `Storage upload failed for ${context.bucket}/${context.path}.`,
+    status !== null ? `status=${status}` : '',
+    statusCode ? `statusCode=${statusCode}` : '',
+    code ? `code=${code}` : '',
+    message || '',
+  ].filter(Boolean)
+
+  return parts.join(' ')
+}
+
+function normalizeStoragePath(path: string) {
+  return path.replace(/^\/+/, '').trim()
+}
+
+export function parseStoragePathFromImageUrl(imageUrl: string | null | undefined, bucket: string) {
+  if (!imageUrl) return null
+
+  const marker = `/object/public/${bucket}/`
+  const trimmed = imageUrl.trim()
+  const markerIndex = trimmed.indexOf(marker)
+
+  if (markerIndex < 0) {
+    const normalized = normalizeStoragePath(trimmed)
+    return normalized || null
+  }
+
+  const pathWithQuery = trimmed.slice(markerIndex + marker.length)
+  const queryIndex = pathWithQuery.indexOf('?')
+  const path = queryIndex >= 0 ? pathWithQuery.slice(0, queryIndex) : pathWithQuery
+  const normalized = normalizeStoragePath(path)
+
+  return normalized || null
 }
 
 function extensionFromMimeType(mimeType: string) {
@@ -100,7 +150,9 @@ export function createStorageImagePath({
   allowedExtensions,
   mimeType,
 }: CreateStorageImagePathOptions) {
-  return `${root}/${ownerId}/${createStorageImageFileName({ fileName, prefix, allowedExtensions, mimeType })}`
+  const segments = [root?.trim(), ownerId.trim(), createStorageImageFileName({ fileName, prefix, allowedExtensions, mimeType })]
+
+  return segments.filter(Boolean).join('/')
 }
 
 export function extractPublicStoragePath(
@@ -108,20 +160,11 @@ export function extractPublicStoragePath(
   bucket: string,
   allowedRoots: string[],
 ) {
-  if (!imageUrl) return null
+  const path = parseStoragePathFromImageUrl(imageUrl, bucket)
 
-  const marker = `/object/public/${bucket}/`
-  const trimmed = imageUrl.trim()
-  const markerIndex = trimmed.indexOf(marker)
-
-  if (markerIndex < 0) {
-    const normalized = trimmed.replace(/^\/+/, '')
-    return allowedRoots.some((root) => normalized.startsWith(`${root}/`)) ? normalized : null
+  if (!path) {
+    return null
   }
-
-  const pathWithQuery = trimmed.slice(markerIndex + marker.length)
-  const queryIndex = pathWithQuery.indexOf('?')
-  const path = queryIndex >= 0 ? pathWithQuery.slice(0, queryIndex) : pathWithQuery
 
   return allowedRoots.some((root) => path.startsWith(`${root}/`)) ? path : null
 }
@@ -164,7 +207,7 @@ export async function uploadPublicStorageImage({ bucket, path, file }: UploadPub
   })
 
   if (uploadResult.error) {
-    throw uploadResult.error
+    throw new Error(describeStorageError(uploadResult.error, { bucket, path }))
   }
 
   return {

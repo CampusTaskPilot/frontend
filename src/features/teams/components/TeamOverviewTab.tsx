@@ -62,6 +62,7 @@ interface TeamOverviewTabProps {
   isLoading: boolean
   errorMessage: string
   isLeader: boolean
+  canManageTeamProfile: boolean
   currentUserId: string | null
   isDeletingTeam: boolean
   deleteErrorMessage: string
@@ -215,6 +216,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
     isLoading,
     errorMessage,
     isLeader,
+    canManageTeamProfile,
     currentUserId,
     isDeletingTeam,
     deleteErrorMessage,
@@ -452,7 +454,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
                 ) : null}
               </div>
 
-              {isLeader ? (
+              {canManageTeamProfile ? (
                 <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                   <UiButton
                     type="button"
@@ -469,7 +471,12 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
                     variant="outline"
                     size="lg"
                     className="min-h-11 rounded-2xl border-rose-200 bg-rose-50/90 px-5 text-rose-700 hover:bg-rose-100 hover:text-rose-700"
-                    onClick={() => setIsDeleteOpen(true)}
+                    disabled={!isLeader}
+                    onClick={() => {
+                      if (isLeader) {
+                        setIsDeleteOpen(true)
+                      }
+                    }}
                   >
                     <Trash2 data-icon="inline-start" aria-hidden="true" />
                     팀 삭제
@@ -488,9 +495,9 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
               </p>
             </div>
 
-            <div className="mx-auto w-full max-w-5xl">
-              <div className="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/78 p-2.5 shadow-[0_28px_72px_-42px_rgba(15,23,42,0.45)] backdrop-blur">
-                <div className="relative overflow-hidden rounded-[1.35rem] border border-brand-100/70 bg-[linear-gradient(160deg,rgba(240,247,255,0.96),rgba(255,255,255,0.92))]">
+            <div className="mx-auto w-full max-w-3xl">
+              <div className="overflow-hidden rounded-[1.75rem] border border-white/80 bg-white/78 p-3 shadow-[0_28px_72px_-42px_rgba(15,23,42,0.45)] backdrop-blur">
+                <div className="relative mx-auto max-w-xl overflow-hidden rounded-[1.35rem] border border-brand-100/70 bg-[linear-gradient(160deg,rgba(240,247,255,0.96),rgba(255,255,255,0.92))]">
                   {team.image_url ? (
                     <img src={team.image_url} alt={`${team.name} 대표 이미지`} className="aspect-[16/6] w-full object-cover" />
                   ) : (

@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../features/auth/context/useAuth'
 import { TeamApplicationCallout } from '../features/teams/components/TeamApplicationCallout'
 import { TeamApplicationsTab } from '../features/teams/components/TeamApplicationsTab'
-import { ProjectDirectionOverviewPanel } from '../features/teams/components/ProjectDirectionOverviewPanel'
 import { TeamCalendarTab } from '../features/teams/components/TeamCalendarTab'
 import { TeamMembersTab } from '../features/teams/components/TeamMembersTab'
 import { TeamOverviewTab } from '../features/teams/components/TeamOverviewTab'
@@ -67,7 +66,7 @@ function TeamHeaderFallback({
           <h1 className="font-display text-3xl text-campus-900">{teamName}</h1>
           <p className="text-sm text-campus-600">
             리더 <span className="font-medium text-campus-900">{leaderName}</span>
-            {isLeader ? '가 이 워크스페이스를 관리 중입니다.' : '의 현재 팀 작업 공간입니다.'}
+            {isLeader ? '가 현재 워크스페이스를 관리하고 있습니다.' : '와 함께 이 워크스페이스를 보고 있습니다.'}
           </p>
         </div>
 
@@ -88,9 +87,9 @@ export function TeamWorkspacePage() {
   const requestedTab = parseTeamWorkspaceTab(searchParams.get('tab'))
   const requestedAssistant = searchParams.get('assistant')
   const initialAssistantTab: PMAssistantTabKey =
-    requestedAssistant === 'meeting-actionizer' || requestedAssistant === 'report-writer' || requestedAssistant === 'direction'
+    requestedAssistant === 'meeting-actionizer' || requestedAssistant === 'report-writer'
       ? requestedAssistant
-      : 'direction'
+      : 'meeting-actionizer'
 
   const [activeTab, setActiveTab] = useState<TeamWorkspaceTabKey>(requestedTab)
   const [baseData, setBaseData] = useState<TeamWorkspaceBase | null>(null)
@@ -194,8 +193,11 @@ export function TeamWorkspacePage() {
     }
 
     const correctedRequestedTab = getAccessibleTeamWorkspaceTab(requestedTab, isTeamMember, canManageApplications)
+    const correctedAssistant = correctedRequestedTab === 'pm' ? initialAssistantTab : null
+    const currentAssistant = searchParams.get('assistant')
     const shouldStripAssistant = correctedRequestedTab !== 'pm' && searchParams.has('assistant')
-    const shouldReplaceUrl = correctedRequestedTab !== requestedTab || shouldStripAssistant
+    const shouldCorrectAssistant = correctedRequestedTab === 'pm' && currentAssistant !== correctedAssistant
+    const shouldReplaceUrl = correctedRequestedTab !== requestedTab || shouldStripAssistant || shouldCorrectAssistant
 
     if (activeTab !== correctedRequestedTab) {
       setActiveTab(correctedRequestedTab)
@@ -209,6 +211,8 @@ export function TeamWorkspacePage() {
     nextSearchParams.set('tab', correctedRequestedTab)
     if (correctedRequestedTab !== 'pm') {
       nextSearchParams.delete('assistant')
+    } else if (correctedAssistant) {
+      nextSearchParams.set('assistant', correctedAssistant)
     }
 
     navigate(
@@ -218,7 +222,7 @@ export function TeamWorkspacePage() {
       },
       { replace: true },
     )
-  }, [activeTab, baseData?.team, canManageApplications, isTeamMember, navigate, requestedTab, searchParams, teamId])
+  }, [activeTab, baseData?.team, canManageApplications, initialAssistantTab, isTeamMember, navigate, requestedTab, searchParams, teamId])
 
   useEffect(() => {
     if (!teamId || !baseData?.team) {
@@ -412,6 +416,7 @@ export function TeamWorkspacePage() {
 
   const tasks = useMemo<TeamTaskItem[]>(() => [], [])
   const isLeader = baseData?.team?.leader_id === user?.id || baseData?.current_user_role === 'leader'
+  const canManageTeamProfile = isLeader || baseData?.current_user_role === 'admin'
   const leaderName = baseData?.leader?.full_name || baseData?.leader?.email || baseData?.leader?.id || '팀 리더'
 
   async function reloadMembers(currentTeamId: string) {
@@ -540,7 +545,7 @@ export function TeamWorkspacePage() {
         applicantMessage: message,
       })
       setMyApplication(application)
-      setApplicationFeedback('신청이 바로 저장되었습니다.')
+      setApplicationFeedback('지원 요청이 등록되었습니다.')
 
       if (session?.access_token) {
         void requestTeamApplicationAnalysis({
@@ -556,7 +561,7 @@ export function TeamWorkspacePage() {
         setApplicationError(error.message)
         return
       }
-      setApplicationError(error instanceof Error ? error.message : 'Failed to submit the team application.')
+      setApplicationError(error instanceof Error ? error.message : '팀 지원 요청을 제출하지 못했습니다.')
     }
   }
 
@@ -601,7 +606,7 @@ export function TeamWorkspacePage() {
       }
       setApplicationFeedback(updated.message)
     } catch (error) {
-      setApplicationError(error instanceof Error ? error.message : 'Failed to update the application status.')
+      setApplicationError(error instanceof Error ? error.message : '지원 상태를 변경하지 못했습니다.')
     } finally {
       setPendingApplicationId(null)
     }
@@ -692,7 +697,7 @@ export function TeamWorkspacePage() {
       const deleted = await deleteTeam(teamId)
       navigate('/teams', {
         replace: true,
-        state: { feedbackMessage: `${deleted.name} 팀을 삭제했습니다.` },
+        state: { feedbackMessage: `${deleted.name} 팀이 삭제되었습니다.` },
       })
     } catch (error) {
       setDeleteErrorMessage(error instanceof Error ? error.message : '팀 삭제에 실패했습니다.')
@@ -732,7 +737,7 @@ export function TeamWorkspacePage() {
     return (
       <section className="page-shell">
         <Card>
-          <p className="text-sm text-campus-600">워크스페이스 정보를 불러오는 중…</p>
+          <p className="text-sm text-campus-600">워크스페이스 정보를 불러오는 중...</p>
         </Card>
       </section>
     )
@@ -771,7 +776,7 @@ export function TeamWorkspacePage() {
           teamName={baseData.team.name}
           leaderName={leaderName}
           isLeader={Boolean(isLeader)}
-          onOpenPM={() => openPMAssistantTab('direction')}
+          onOpenPM={() => openPMAssistantTab('meeting-actionizer')}
         />
       )}
 
@@ -816,6 +821,7 @@ export function TeamWorkspacePage() {
                 isLoading={isTabLoading}
                 errorMessage={tabError}
                 isLeader={Boolean(isLeader)}
+                canManageTeamProfile={Boolean(canManageTeamProfile)}
                 currentUserId={user?.id ?? null}
                 isDeletingTeam={isDeletingTeam}
                 deleteErrorMessage={deleteErrorMessage}
@@ -860,26 +866,12 @@ export function TeamWorkspacePage() {
           ) : null}
 
           {resolvedActiveTab === 'tasks' && teamId ? (
-            <div className="space-y-4">
-              <ProjectDirectionOverviewPanel
-                teamId={teamId}
-                currentUserId={user?.id ?? null}
-                title="AI 방향 제안"
-                subtitle="현재 팀 상태를 기준으로 다음 액션을 제안합니다. 필요하면 바로 PM Assistant로 이동할 수 있습니다."
-                emptyActionLabel="방향 제안 열기"
-                collapsible
-                defaultCollapsed
-                onOpenAssistant={() => openPMAssistantTab('direction')}
-                onOpenTasks={() => openWorkspaceTab('tasks')}
-                onOpenCalendar={() => openWorkspaceTab('calendar')}
-              />
-              <TeamTasksTab
-                teamId={teamId}
-                currentUserId={user?.id ?? null}
-                currentUserRole={(baseData.current_user_role ?? null) as TeamMemberRole | null}
-                members={members}
-              />
-            </div>
+            <TeamTasksTab
+              teamId={teamId}
+              currentUserId={user?.id ?? null}
+              currentUserRole={(baseData.current_user_role ?? null) as TeamMemberRole | null}
+              members={members}
+            />
           ) : null}
 
           {resolvedActiveTab === 'calendar' && teamId ? (
@@ -902,3 +894,4 @@ export function TeamWorkspacePage() {
     </section>
   )
 }
+

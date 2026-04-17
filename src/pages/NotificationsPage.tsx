@@ -178,10 +178,10 @@ export function NotificationsPage() {
       <Card className="space-y-4 bg-[radial-gradient(circle_at_top_left,rgba(77,125,255,0.12),transparent_42%),linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-600">NOTIFICATIONS</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-600">알림</p>
             <h1 className="font-display text-3xl text-campus-900">알림 센터</h1>
             <p className="max-w-2xl text-sm leading-6 text-campus-600">
-              팀 신청, 상태 변경 같은 최근 인앱 알림을 모아 보고 읽음 상태를 관리할 수 있습니다.
+              팀 신청과 상태 변경 같은 최근 인앱 알림을 모아 보고 읽음 상태를 관리할 수 있습니다.
             </p>
           </div>
 
@@ -220,7 +220,7 @@ export function NotificationsPage() {
         <Card>
           <p className="text-sm font-medium text-campus-900">표시할 알림이 없습니다.</p>
           <p className="mt-2 text-sm leading-6 text-campus-600">
-            새 신청이나 상태 변경이 생기면 이 페이지에서 가장 먼저 확인할 수 있습니다.
+            팀 신청이나 상태 변경이 생기면 이 페이지에서 가장 먼저 확인할 수 있습니다.
           </p>
         </Card>
       ) : (
@@ -250,7 +250,7 @@ export function NotificationsPage() {
                     </Button>
                   ) : null}
                   <Button type="button" size="sm" onClick={() => navigate(item.href || '/notifications')}>
-                    열기
+                    보기
                   </Button>
                 </div>
               </div>

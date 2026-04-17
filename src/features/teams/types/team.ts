@@ -1,4 +1,4 @@
-export type TeamMemberRole = 'leader' | 'member' | string
+export type TeamMemberRole = 'leader' | 'admin' | 'member' | string
 
 export interface SkillOption {
   id: number
@@ -475,11 +475,37 @@ export interface MeetingActionizerResponse {
   remaining_seconds: number
 }
 
+export type MeetingActionizerStatusType =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cooldown'
+
+export interface MeetingActionizerLog {
+  id: string
+  team_id: string | null
+  requested_by: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  title: string | null
+  meeting_date: string | null
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 export interface MeetingActionizerStatus {
+  status: MeetingActionizerStatusType
   can_trigger: boolean
   cooldown_minutes: number
   remaining_seconds: number
   available_at: string | null
+  cooldown_until: string | null
+  latest_log: MeetingActionizerLog | null
   message: string | null
 }
 
@@ -564,6 +590,7 @@ export interface PMReportStatusLog {
 
 export interface PMReportCooldownStatus {
   can_trigger: boolean
+  status: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'cooldown'
   cooldown_minutes: number
   cooldown_remaining_seconds: number
   cooldown_until: string | null
@@ -626,6 +653,36 @@ export interface ProjectDirectionOverview {
   createdAt?: string
   updatedAt?: string
   source?: 'llm' | 'fallback'
+}
+
+export type ProjectDirectionAssistantStatus =
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cooldown'
+
+export interface ProjectDirectionGenerationLog {
+  id: string
+  requested_by: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+  updated_at: string | null
+}
+
+export interface ProjectDirectionStatusInfo {
+  can_trigger: boolean
+  status: ProjectDirectionAssistantStatus
+  cooldown_minutes: number
+  remaining_seconds: number
+  cooldown_until: string | null
+  latest_log: ProjectDirectionGenerationLog | null
+  overview: ProjectDirectionOverview | null
+  message: string | null
 }
 
 export interface TeamCalendarEventRecord {

@@ -1,13 +1,25 @@
-import type { ProjectDirectionOverview } from '../types/team'
+import type {
+  ProjectDirectionOverview,
+  ProjectDirectionStatusInfo,
+} from '../types/team'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 const projectDirectionUpdatedEvent = 'taskpilot:project-direction-updated'
 
-interface ProjectDirectionApiErrorPayload {
-  detail?: string | { message?: string }
+interface ProjectDirectionApiErrorDetail {
+  message?: string
+  status?: ProjectDirectionStatusInfo['status']
+  can_trigger?: boolean
+  remaining_seconds?: number
+  cooldown_minutes?: number
+  cooldown_until?: string | null
 }
 
-interface ProjectDirectionApiResponse {
+interface ProjectDirectionApiErrorPayload {
+  detail?: string | ProjectDirectionApiErrorDetail
+}
+
+interface ProjectDirectionOverviewApiResponse {
   id: string
   team_id: string
   status: ProjectDirectionOverview['status']
@@ -35,6 +47,28 @@ interface ProjectDirectionApiResponse {
   generation_source?: 'llm' | 'fallback'
 }
 
+interface ProjectDirectionGenerationLogApiResponse {
+  id: string
+  requested_by: string | null
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  error_message: string | null
+  cooldown_until: string | null
+  started_at: string | null
+  completed_at: string | null
+  updated_at: string | null
+}
+
+interface ProjectDirectionStatusApiResponse {
+  can_trigger: boolean
+  status: ProjectDirectionStatusInfo['status']
+  cooldown_minutes: number
+  remaining_seconds: number
+  cooldown_until: string | null
+  latest_log: ProjectDirectionGenerationLogApiResponse | null
+  overview: ProjectDirectionOverviewApiResponse | null
+  message: string | null
+}
+
 export class ProjectDirectionApiError extends Error {
   statusCode: number
   payload: ProjectDirectionApiErrorPayload | null
@@ -55,10 +89,10 @@ function parseApiErrorMessage(payload: ProjectDirectionApiErrorPayload | null, s
   if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
     return detail.message
   }
-  return `프로젝트 방향 제안을 불러오지 못했습니다. (${statusCode})`
+  return `Failed to process project direction request. (${statusCode})`
 }
 
-function toProjectDirectionOverview(payload: ProjectDirectionApiResponse): ProjectDirectionOverview {
+function toProjectDirectionOverview(payload: ProjectDirectionOverviewApiResponse): ProjectDirectionOverview {
   return {
     id: payload.id,
     teamId: payload.team_id,
@@ -66,8 +100,10 @@ function toProjectDirectionOverview(payload: ProjectDirectionApiResponse): Proje
     headline: payload.headline,
     summary: payload.summary,
     projectSummary: {
-      phase: payload.project_summary?.phase ?? '방향 분석 필요',
-      shortTermGoal: payload.project_summary?.short_term_goal ?? '현재 데이터 기준으로 다음 단계 목표를 다시 정리하세요.',
+      phase: payload.project_summary?.phase ?? 'Analysis needed',
+      shortTermGoal:
+        payload.project_summary?.short_term_goal ??
+        'Generate the latest project direction overview to see the next focus area.',
       keyMetrics: payload.project_summary?.key_metrics ?? [],
     },
     diagnosis: (payload.diagnosis ?? []).map((item) => ({
@@ -88,17 +124,27 @@ function toProjectDirectionOverview(payload: ProjectDirectionApiResponse): Proje
   }
 }
 
+function toProjectDirectionStatus(payload: ProjectDirectionStatusApiResponse): ProjectDirectionStatusInfo {
+  return {
+    can_trigger: payload.can_trigger,
+    status: payload.status,
+    cooldown_minutes: payload.cooldown_minutes,
+    remaining_seconds: payload.remaining_seconds,
+    cooldown_until: payload.cooldown_until,
+    latest_log: payload.latest_log,
+    overview: payload.overview ? toProjectDirectionOverview(payload.overview) : null,
+    message: payload.message,
+  }
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T | null> {
   const text = await response.text()
   return text ? (JSON.parse(text) as T) : null
 }
 
-export async function fetchProjectDirectionOverview(
-  teamId: string,
-  userId: string,
-): Promise<ProjectDirectionOverview | null> {
+export async function fetchProjectDirectionStatus(teamId: string, userId: string): Promise<ProjectDirectionStatusInfo> {
   const response = await fetch(
-    `${apiBaseUrl}/pm-assistant/project-direction?team_id=${encodeURIComponent(teamId)}&user_id=${encodeURIComponent(userId)}`,
+    `${apiBaseUrl}/pm-assistant/project-direction/status?team_id=${encodeURIComponent(teamId)}&user_id=${encodeURIComponent(userId)}`,
     {
       method: 'GET',
       headers: {
@@ -107,12 +153,7 @@ export async function fetchProjectDirectionOverview(
     },
   )
 
-  const payload = await parseJsonResponse<ProjectDirectionApiResponse | ProjectDirectionApiErrorPayload>(response)
-
-  if (response.status === 404) {
-    return null
-  }
-
+  const payload = await parseJsonResponse<ProjectDirectionStatusApiResponse | ProjectDirectionApiErrorPayload>(response)
   if (!response.ok) {
     throw new ProjectDirectionApiError(
       parseApiErrorMessage(payload as ProjectDirectionApiErrorPayload | null, response.status),
@@ -121,36 +162,12 @@ export async function fetchProjectDirectionOverview(
     )
   }
 
-  return toProjectDirectionOverview(payload as ProjectDirectionApiResponse)
+  return toProjectDirectionStatus(payload as ProjectDirectionStatusApiResponse)
 }
 
-export async function generateProjectDirectionOverview(params: {
-  teamId: string
-  requestedBy: string
-}): Promise<ProjectDirectionOverview> {
-  const response = await fetch(`${apiBaseUrl}/pm-assistant/project-direction/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      team_id: params.teamId,
-      requested_by: params.requestedBy,
-    }),
-  })
-
-  const payload = await parseJsonResponse<ProjectDirectionApiResponse | ProjectDirectionApiErrorPayload>(response)
-
-  if (!response.ok) {
-    throw new ProjectDirectionApiError(
-      parseApiErrorMessage(payload as ProjectDirectionApiErrorPayload | null, response.status),
-      response.status,
-      payload as ProjectDirectionApiErrorPayload | null,
-    )
-  }
-
-  return toProjectDirectionOverview(payload as ProjectDirectionApiResponse)
+export async function fetchProjectDirectionOverview(teamId: string, userId: string): Promise<ProjectDirectionOverview | null> {
+  const status = await fetchProjectDirectionStatus(teamId, userId)
+  return status.overview
 }
 
 export function notifyProjectDirectionOverviewUpdated(teamId: string) {
@@ -161,9 +178,7 @@ export function notifyProjectDirectionOverviewUpdated(teamId: string) {
   )
 }
 
-export function subscribeProjectDirectionOverviewUpdated(
-  listener: (teamId: string) => void,
-) {
+export function subscribeProjectDirectionOverviewUpdated(listener: (teamId: string) => void) {
   const handler = (event: Event) => {
     const customEvent = event as CustomEvent<{ teamId?: string }>
     const teamId = customEvent.detail?.teamId

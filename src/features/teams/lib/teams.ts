@@ -1,6 +1,7 @@
 ﻿import { supabase } from '../../../lib/supabase'
 import {
-  extractTeamImagePath,
+  extractTeamImageReference,
+  removeTeamImageByReference,
   removeTeamImageByPath,
   uploadTeamImage,
   validateTeamImageFile,
@@ -1040,7 +1041,12 @@ export async function updateTeamProfile(params: {
 
   const [teamAccessResult, membershipResult] = await Promise.all([
     supabase.from('teams').select(TEAM_SELECT_COLUMNS).eq('id', teamId).maybeSingle(),
-    supabase.from('team_members').select('role').eq('team_id', teamId).eq('user_id', userId).maybeSingle(),
+    supabase
+      .from('team_members')
+      .select('role,status')
+      .eq('team_id', teamId)
+      .eq('user_id', userId)
+      .maybeSingle(),
   ])
 
   if (teamAccessResult.error) {
@@ -1057,11 +1063,13 @@ export async function updateTeamProfile(params: {
 
   const leaderId = String((teamAccessResult.data as Record<string, unknown>).leader_id ?? '')
   const membershipRole = typeof membershipResult.data?.role === 'string' ? membershipResult.data.role : null
+  const membershipStatus = typeof membershipResult.data?.status === 'string' ? membershipResult.data.status : null
   const isLeaderById = leaderId === userId
-  const isLeaderByMembership = membershipRole === 'leader'
+  const isActiveManagerByMembership =
+    membershipStatus === 'active' && (membershipRole === 'leader' || membershipRole === 'admin')
 
-  if (!isLeaderById && !isLeaderByMembership) {
-    throw new Error('Only the team leader can edit this profile.')
+  if (!isLeaderById && !isActiveManagerByMembership) {
+    throw new Error('Only the team leader or an active team admin can edit this profile.')
   }
 
   const teamPayload = {
@@ -1075,7 +1083,8 @@ export async function updateTeamProfile(params: {
     image_url: currentImageUrl,
   }
 
-  const previousImagePath = extractTeamImagePath(currentImageUrl)
+  const previousImageReference = extractTeamImageReference(currentImageUrl)
+  const previousImagePath = previousImageReference?.path ?? null
   let nextImagePath: string | null = previousImagePath
   let uploadedImagePath: string | null = null
 
@@ -1116,7 +1125,7 @@ export async function updateTeamProfile(params: {
     if (uploadedImagePath) {
       await removeTeamImageByPath(uploadedImagePath).catch(() => undefined)
     }
-    throw new Error('Only the team leader can edit this profile.')
+    throw new Error('Only the team leader or an active team admin can edit this profile.')
   }
 
   if (shouldUpdateSkills) {
@@ -1141,7 +1150,7 @@ export async function updateTeamProfile(params: {
   }
 
   if (previousImagePath && previousImagePath !== nextImagePath) {
-    await removeTeamImageByPath(previousImagePath).catch(() => undefined)
+    await removeTeamImageByReference(previousImageReference).catch(() => undefined)
   }
 
   return {

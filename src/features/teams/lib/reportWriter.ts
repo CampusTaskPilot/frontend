@@ -7,6 +7,7 @@ interface PMReportApiErrorPayload {
     | string
     | {
         message?: string
+        status?: PMReportCooldownStatus['status']
         cooldown_remaining_seconds?: number
         cooldown_until?: string | null
         can_trigger?: boolean
@@ -93,6 +94,7 @@ export async function fetchPMReportStatus(params: {
   teamId: string
   reportScope: 'team' | 'personal'
   userId: string | null
+  signal?: AbortSignal
 }): Promise<PMReportCooldownStatus> {
   const search = new URLSearchParams({
     team_id: params.teamId,
@@ -107,6 +109,7 @@ export async function fetchPMReportStatus(params: {
     headers: {
       Accept: 'application/json',
     },
+    signal: params.signal,
   })
 
   const text = await response.text()

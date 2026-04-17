@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+﻿import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AuthMenu } from '../components/common/AuthMenu'
 import { Button } from '../components/ui/Button'
@@ -8,7 +8,7 @@ const featureItems = [
   {
     title: 'AI Task 추천',
     description:
-      '진행 중인 일과 목표, 팀 업무 문맥을 반영해 지금 바로 필요한 task를 빠르게 추천합니다.',
+      '진행 중인 목표와 팀의 맥락을 바탕으로 지금 필요한 Task를 빠르게 추천합니다.',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
         <path
@@ -25,7 +25,7 @@ const featureItems = [
   {
     title: '자동 업무 배분',
     description:
-      '팀원 역량과 일정 여유를 반영해 가장 적절한 담당자에게 자연스럽게 연결합니다.',
+      '업무량과 일정, 역할을 반영해 가장 적절한 담당자에게 자연스럽게 연결합니다.',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
         <path
@@ -40,9 +40,9 @@ const featureItems = [
     ),
   },
   {
-    title: '회의 후속 실행 자동화',
+    title: '회의 내용을 실행 Task로 전환',
     description:
-      '회의 내용을 실행 가능한 task로 바꾸고 일정과 우선순위까지 이어서 정리합니다.',
+      '회의 메모와 요청사항을 실행 가능한 Task로 바꾸고 일정과 우선순위까지 이어서 정리합니다.',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
         <path
@@ -57,9 +57,9 @@ const featureItems = [
     ),
   },
   {
-    title: '팀 흐름 분석 및 추천',
+    title: '업무 흐름 분석 및 추천',
     description:
-      '막히는 구간을 감지하고 다음에 해야 할 일을 먼저 제안해 팀의 속도를 높여줍니다.',
+      '막히는 구간을 파악하고 다음에 해야 할 일을 먼저 제안해 실행 속도를 높여줍니다.',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6">
         <path
@@ -156,17 +156,17 @@ export function LandingPage() {
               <div className="min-w-0">
                 <p className="text-lg font-semibold tracking-tight text-campus-900">TaskPilot</p>
                 <p className="hidden break-keep text-sm text-campus-500 sm:block">
-                  AI 기반 작업 워크플로우 SaaS
+                  팀의 업무 흐름을 AI로 정리하는 협업 플랫폼
                 </p>
               </div>
             </Link>
 
-            <div className="flex items-center gap-2 sm:gap-3">
-              <AuthMenu
-                guestPrimaryLabel="무료로 시작하기"
-                loadingClassName="h-11 w-32 rounded-full border border-campus-200 bg-white/70"
-              />
-            </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <AuthMenu
+                  guestPrimaryLabel="무료로 시작하기"
+                  loadingClassName="h-11 w-32 rounded-full border border-campus-200 bg-white/70"
+                />
+              </div>
           </div>
         </header>
 
@@ -178,11 +178,11 @@ export function LandingPage() {
               </h1>
 
               <p className="mx-auto mt-5 max-w-[18ch] break-keep text-lg font-medium leading-8 text-campus-600 sm:text-xl">
-                팀 업무를 실행까지 정리합니다
+                흩어진 업무를 실행까지 정리합니다
               </p>
 
               <p className="mx-auto mt-7 max-w-[35ch] break-keep text-base leading-8 text-campus-600 sm:text-lg">
-                회의 메모, 업무 요청, 일정 변경이 섞여 있어도 괜찮습니다.
+                회의 메모, 업무 요청, 일정 변경이 쌓여도 괜찮습니다.
                 <br />
                 TaskPilot은 맥락을 정리하고 담당자와 우선순위, 실행 순서까지 자연스럽게 연결합니다.
               </p>
@@ -197,7 +197,7 @@ export function LandingPage() {
               </div>
 
               <p className="mt-8 text-sm font-medium text-campus-500">
-                더 많은 팀이 TaskPilot으로 회의 이후의 실행 속도를 높이고 있습니다
+                여러 팀이 이미 TaskPilot으로 회의 이후 실행 속도를 높이고 있습니다
               </p>
 
               <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-3">
@@ -220,7 +220,9 @@ export function LandingPage() {
             <div className="mx-auto max-w-3xl text-center">
               <p className="text-sm font-semibold tracking-[0.18em] text-brand-600">핵심 기능</p>
               <h2 className="mx-auto mt-4 max-w-[13ch] break-keep text-3xl font-semibold leading-[1.24] tracking-[-0.04em] text-campus-900 sm:text-4xl">
-                복잡한 작업도 간단한 실행 흐름으로 바꾸는 기능들
+                복잡한 업무를 간단한
+                <br />
+                실행 흐름으로 바꾸는 기능
               </h2>
               <p className="mx-auto mt-5 max-w-[34ch] break-keep text-base leading-8 text-campus-600 sm:text-lg">
                 필요한 기능만 명확하게 보여주고, 실제 팀 운영에서 자주 마주치는 흐름에 맞춰 설계했습니다.
@@ -258,7 +260,7 @@ export function LandingPage() {
                   하나의 흐름으로 이어집니다
                 </h2>
                 <p className="mx-auto mt-5 max-w-[34ch] break-keep text-base leading-8 text-campus-600 sm:text-lg">
-                  업무 요청을 따로 정리하고 다시 배정하는 수고 없이, AI가 다음 단계로 자연스럽게 연결합니다.
+                  업무 요청만 올려두면 다시 정리할 필요 없이, AI가 다음 단계로 자연스럽게 연결합니다.
                 </p>
               </div>
 
@@ -301,10 +303,12 @@ export function LandingPage() {
               <div className="mx-auto max-w-3xl text-center">
                 <p className="text-sm font-semibold tracking-[0.18em] text-white/65">지금 시작하기</p>
                 <h2 className="mt-4 break-keep text-3xl font-semibold leading-[1.24] tracking-[-0.04em] text-white sm:text-4xl">
-                  이제 팀의 업무를 더 효율적으로 관리해보세요
+                  이제 팀의 업무를
+                  <br />
+                  더 효율적으로 관리해보세요
                 </h2>
                 <p className="mx-auto mt-5 max-w-[34ch] break-keep text-base leading-8 text-white/74 sm:text-lg">
-                  지금 시작하면 AI가 팀의 흐름을 자동으로 정리하고 실행이 멈추지 않도록 다음 액션까지 이어줍니다.
+                  지금 시작하면 AI가 팀의 흐름을 정리하고 실행이 멈추지 않도록 다음 액션까지 이어줍니다.
                 </p>
 
                 <div className="mt-10 flex items-center justify-center">

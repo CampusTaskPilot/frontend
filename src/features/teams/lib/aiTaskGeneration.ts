@@ -61,12 +61,16 @@ export async function startAiTaskGeneration(params: {
   return parseResponse<AiTaskGenerationStartResponse>(response)
 }
 
-export async function fetchAiTaskGenerationStatus(teamId: string): Promise<AiTaskGenerationStatus> {
+export async function fetchAiTaskGenerationStatus(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AiTaskGenerationStatus> {
   const response = await fetch(`${apiBaseUrl}/teams/${teamId}/ai-task-generation/status`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
     },
+    signal: options?.signal,
   })
 
   return parseResponse<AiTaskGenerationStatus>(response)

@@ -1,10 +1,16 @@
 import { useState } from 'react'
+import { Badge } from '../../../components/ui/Badge'
 import { Button } from '../../../components/ui/Button'
 import { Card } from '../../../components/ui/Card'
-import { Badge } from '../../../components/ui/Badge'
 import { cn } from '../../../lib/cn'
 import { useProjectDirectionOverview } from '../hooks/useProjectDirectionOverview'
-import type { ProjectDirectionActionItem, ProjectDirectionDiagnosisItem, ProjectDirectionOverview, ProjectDirectionSeverity, ProjectDirectionStatus } from '../types/team'
+import type {
+  ProjectDirectionActionItem,
+  ProjectDirectionDiagnosisItem,
+  ProjectDirectionOverview,
+  ProjectDirectionSeverity,
+  ProjectDirectionStatus,
+} from '../types/team'
 
 interface ProjectDirectionOverviewPanelProps {
   teamId: string
@@ -22,7 +28,7 @@ interface ProjectDirectionOverviewPanelProps {
   hideAssistantAction?: boolean
   collapsible?: boolean
   defaultCollapsed?: boolean
-  onOpenAssistant: () => void
+  onOpenAssistant?: () => void
   onOpenTasks?: () => void
   onOpenCalendar?: () => void
 }
@@ -93,7 +99,7 @@ function EmptyState({
   subtitle: string
   actionLabel: string
   actionDisabled: boolean
-  onOpenAssistant: () => void
+  onOpenAssistant?: () => void
 }) {
   return (
     <Card className="overflow-hidden border-brand-100 bg-gradient-to-br from-white via-brand-50 to-campus-50 p-0">
@@ -101,14 +107,16 @@ function EmptyState({
         <div className="relative space-y-4">
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-600">{title}</p>
-            <h3 className="font-display text-xl leading-tight text-campus-900">저장된 방향 브리프가 없습니다</h3>
+            <h3 className="font-display text-xl leading-tight text-campus-900">저장된 방향 브리프가 아직 없습니다</h3>
           </div>
           <div className="rounded-[28px] border border-white/80 bg-white/85 p-4 shadow-sm">
             <p className="text-sm leading-6 text-campus-700">{subtitle}</p>
           </div>
-          <Button type="button" onClick={onOpenAssistant} disabled={actionDisabled}>
-            {actionLabel}
-          </Button>
+          {onOpenAssistant ? (
+            <Button type="button" onClick={onOpenAssistant} disabled={actionDisabled}>
+              {actionLabel}
+            </Button>
+          ) : null}
         </div>
       </div>
     </Card>
@@ -122,7 +130,7 @@ function DirectionCard({ overview }: { overview: ProjectDirectionOverview }) {
         <div className="relative space-y-4">
           <div className="flex items-center gap-2">
             <span className="rounded-full border border-brand-200 bg-white/90 px-3 py-1 text-xs font-semibold text-brand-700">
-              앞으로의 방향
+              다음 방향
             </span>
             <Badge variant={statusVariant(overview.status)}>{statusLabel(overview.status)}</Badge>
           </div>
@@ -132,7 +140,7 @@ function DirectionCard({ overview }: { overview: ProjectDirectionOverview }) {
               <p className="mt-2 text-lg font-semibold text-campus-900">{overview.projectSummary.phase}</p>
             </div>
             <div className="rounded-[24px] border border-brand-200 bg-brand-50/75 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">이번 주 목표</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">단기 목표</p>
               <p className="mt-2 text-lg font-semibold leading-7 text-campus-900">{overview.projectSummary.shortTermGoal}</p>
             </div>
           </div>
@@ -156,7 +164,7 @@ function DiagnosisCard({ item }: { item: ProjectDirectionDiagnosisItem }) {
     <div className={cn('rounded-[24px] border p-4 shadow-sm', diagnosisCardClass(item.severity))}>
       <div className="space-y-3">
         <Badge variant={severityVariant(item.severity)}>
-          {item.severity === 'high' ? '핵심' : item.severity === 'medium' ? '주의' : '참고'}
+          {item.severity === 'high' ? '높음' : item.severity === 'medium' ? '중간' : '낮음'}
         </Badge>
         <h5 className="text-sm font-semibold text-campus-900">{item.title}</h5>
       </div>
@@ -196,7 +204,7 @@ function SuccessState({
   subtitle: string
   showReloadAction: boolean
   onReload: () => void
-  onOpenAssistant: () => void
+  onOpenAssistant?: () => void
   hideAssistantAction?: boolean
 }) {
   const [showMeetingFocus, setShowMeetingFocus] = useState(false)
@@ -226,7 +234,7 @@ function SuccessState({
 
         {overview.actions.length > 0 ? (
           <div className="space-y-3">
-            <h4 className="text-sm font-semibold text-campus-900">실행 액션</h4>
+            <h4 className="text-sm font-semibold text-campus-900">추천 액션</h4>
             <div className={cn('grid gap-3', compact ? 'grid-cols-1' : 'md:grid-cols-2')}>
               {overview.actions.map((item, index) => (
                 <ActionCard key={`${item.title}-${index}`} item={item} />
@@ -240,10 +248,10 @@ function SuccessState({
             <div className="flex items-center justify-between gap-3 rounded-[20px] border border-campus-200 bg-white/75 px-4 py-3">
               <div>
                 <p className="text-sm font-semibold text-campus-900">회의 포인트</p>
-                <p className="text-xs text-campus-500">필요할 때만 펼쳐서 확인합니다.</p>
+                <p className="text-xs text-campus-500">필요할 때만 펼쳐서 확인할 수 있습니다.</p>
               </div>
               <Button type="button" size="sm" variant="ghost" onClick={() => setShowMeetingFocus((value) => !value)}>
-                {showMeetingFocus ? '접기' : '보기'}
+                {showMeetingFocus ? '숨기기' : '보기'}
               </Button>
             </div>
             {showMeetingFocus ? (
@@ -262,7 +270,7 @@ function SuccessState({
         ) : null}
 
         <div className="flex flex-wrap gap-3 border-t border-campus-200/70 pt-1">
-          {!hideAssistantAction ? (
+          {!hideAssistantAction && onOpenAssistant ? (
             <Button type="button" variant="subtle" onClick={onOpenAssistant}>
               PM Assistant에서 보기
             </Button>
@@ -286,9 +294,9 @@ export function ProjectDirectionOverviewPanel({
   errorMessageOverride,
   onReloadOverride,
   title = 'AI 방향 브리프',
-  subtitle = '짧고 바로 읽히는 PM 브리프를 보여줍니다.',
+  subtitle = '지금 팀 상태를 바탕으로 정리한 PM 브리프를 보여줍니다.',
   compact = false,
-  emptyActionLabel = 'PM Assistant에서 추천 받기',
+  emptyActionLabel = 'PM Assistant에서 확인하기',
   emptyActionDisabled = false,
   showReloadAction = true,
   hideAssistantAction = false,
@@ -312,7 +320,7 @@ export function ProjectDirectionOverviewPanel({
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-600">{title}</p>
             <p className="mt-1 truncate text-sm text-campus-600">
-              {overview ? overview.headline : '저장된 방향 브리프가 없으면 PM Assistant에서 생성할 수 있습니다.'}
+              {overview ? overview.headline : '저장된 방향 브리프가 없으면 PM Assistant에서 확인할 수 있습니다.'}
             </p>
           </div>
           <Button type="button" size="sm" variant="ghost" onClick={() => setIsCollapsed(false)}>
@@ -339,9 +347,11 @@ export function ProjectDirectionOverviewPanel({
           <Button type="button" variant="ghost" onClick={() => void reload()}>
             다시 시도
           </Button>
-          <Button type="button" onClick={onOpenAssistant}>
-            PM Assistant 열기
-          </Button>
+          {!hideAssistantAction && onOpenAssistant ? (
+            <Button type="button" onClick={onOpenAssistant}>
+              PM Assistant 열기
+            </Button>
+          ) : null}
         </div>
       </Card>
     )
@@ -354,7 +364,7 @@ export function ProjectDirectionOverviewPanel({
         subtitle={subtitle}
         actionLabel={emptyActionLabel}
         actionDisabled={emptyActionDisabled}
-        onOpenAssistant={onOpenAssistant}
+        onOpenAssistant={!hideAssistantAction ? onOpenAssistant : undefined}
       />
     )
   }
