@@ -1,4 +1,5 @@
 import type { MeetingActionizerResponse, MeetingActionizerStatus } from '../types/team'
+import { buildAuthorizedHeaders } from '../../../lib/apiAuth'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 
@@ -55,7 +56,6 @@ function toReadableNetworkError(error: unknown) {
 
 export async function requestMeetingActionizer(params: {
   teamId: string
-  requestedBy: string
   title: string
   meetingDate: string
   participantNames: string[]
@@ -64,13 +64,12 @@ export async function requestMeetingActionizer(params: {
   try {
     const response = await fetch(`${apiBaseUrl}/pm-assistant/meeting-actionize`, {
       method: 'POST',
-      headers: {
+      headers: await buildAuthorizedHeaders({
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      },
+      }),
       body: JSON.stringify({
         team_id: params.teamId,
-        requested_by: params.requestedBy,
         title: params.title.trim() || null,
         meeting_date: params.meetingDate || null,
         participant_names: params.participantNames,
@@ -94,9 +93,9 @@ export async function fetchMeetingActionizerStatus(
 ): Promise<MeetingActionizerStatus> {
   const response = await fetch(`${apiBaseUrl}/pm-assistant/meeting-actionize/status?team_id=${teamId}`, {
     method: 'GET',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       Accept: 'application/json',
-    },
+    }),
     signal: options?.signal,
   })
 

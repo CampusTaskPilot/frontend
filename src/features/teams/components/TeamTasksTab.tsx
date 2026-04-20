@@ -1101,6 +1101,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }, [])
 
   const loadAiStatus = useCallback(async (signal?: AbortSignal) => {
+    if (!isLeader) return
     if (!isActiveRef.current) return
 
     try {
@@ -1109,11 +1110,13 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       syncAiGenerationStatus(result)
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) return
+      if (error instanceof AiTaskGenerationApiError && error.statusCode === 403) return
       setAiNotice(error instanceof Error ? error.message : 'AI Task 상태를 불러오지 못했습니다.')
     }
-  }, [syncAiGenerationStatus, teamId])
+  }, [isLeader, syncAiGenerationStatus, teamId])
 
   const loadAiAssignmentStatus = useCallback(async (signal?: AbortSignal) => {
+    if (!isLeader) return
     if (!isActiveRef.current) return
 
     try {
@@ -1122,9 +1125,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       syncAiAssignmentStatus(result)
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) return
+      if (error instanceof AiTaskAssignmentApiError && error.statusCode === 403) return
       setErrorMessage(error instanceof Error ? error.message : 'AI 업무 자동 배분 상태를 불러오지 못했습니다.')
     }
-  }, [syncAiAssignmentStatus, teamId])
+  }, [isLeader, syncAiAssignmentStatus, teamId])
 
   const loadAiTodoStatus = useCallback(async (taskId: string, signal?: AbortSignal) => {
     if (!isActiveRef.current) return
@@ -1167,22 +1171,24 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   }, [mergeAiTodoStatuses, teamId])
 
   useEffect(() => {
+    if (!isLeader) return
     const controller = new AbortController()
     void loadAiStatus(controller.signal)
 
     return () => {
       controller.abort()
     }
-  }, [loadAiStatus])
+  }, [isLeader, loadAiStatus])
 
   useEffect(() => {
+    if (!isLeader) return
     const controller = new AbortController()
     void loadAiAssignmentStatus(controller.signal)
 
     return () => {
       controller.abort()
     }
-  }, [loadAiAssignmentStatus])
+  }, [isLeader, loadAiAssignmentStatus])
 
   const persistedTaskIds = useMemo(
     () => tasks.map((task) => task.id).filter((taskId) => !taskId.startsWith('task-draft-')),
@@ -2248,7 +2254,6 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       try {
         const result = await startAiTaskGeneration({
           teamId,
-          requesterProfileId: currentUserId,
         })
 
         activeAiGenerationLogIdRef.current = result.latest_log.id
@@ -2304,7 +2309,6 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       try {
         const result = await startAiTodoGeneration({
           taskId,
-          requesterProfileId: currentUserId,
         })
         console.log('[AI Todo] start payload', { taskId, result })
 
@@ -2366,7 +2370,6 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       try {
         const result = await startAiTaskAssignment({
           teamId,
-          requesterProfileId: currentUserId,
         })
 
         activeAiAssignmentJobIdRef.current = result.latest_log.id

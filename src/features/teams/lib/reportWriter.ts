@@ -1,4 +1,5 @@
 import type { PMReportCooldownStatus, PMReportResponse } from '../types/team'
+import { buildAuthorizedHeaders } from '../../../lib/apiAuth'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 
@@ -41,7 +42,7 @@ function parseErrorMessage(payload: PMReportApiErrorPayload | null, statusCode: 
 export async function requestPMReport(params: {
   teamId: string
   reportScope: 'team' | 'personal'
-  userId: string | null
+  targetUserId: string | null
   startDate: string
   endDate: string
 }): Promise<PMReportResponse> {
@@ -50,14 +51,14 @@ export async function requestPMReport(params: {
   try {
     response = await fetch(`${apiBaseUrl}/pm-assistant/report`, {
       method: 'POST',
-      headers: {
+      headers: await buildAuthorizedHeaders({
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      },
+      }),
       body: JSON.stringify({
         team_id: params.teamId,
         report_scope: params.reportScope,
-        user_id: params.userId,
+        target_user_id: params.targetUserId,
         start_date: params.startDate,
         end_date: params.endDate,
       }),
@@ -93,22 +94,22 @@ export async function requestPMReport(params: {
 export async function fetchPMReportStatus(params: {
   teamId: string
   reportScope: 'team' | 'personal'
-  userId: string | null
+  targetUserId: string | null
   signal?: AbortSignal
 }): Promise<PMReportCooldownStatus> {
   const search = new URLSearchParams({
     team_id: params.teamId,
     report_scope: params.reportScope,
   })
-  if (params.userId) {
-    search.set('user_id', params.userId)
+  if (params.targetUserId) {
+    search.set('target_user_id', params.targetUserId)
   }
 
   const response = await fetch(`${apiBaseUrl}/pm-assistant/report/status?${search.toString()}`, {
     method: 'GET',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       Accept: 'application/json',
-    },
+    }),
     signal: params.signal,
   })
 

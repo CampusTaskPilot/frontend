@@ -2,6 +2,7 @@ import type {
   ProjectDirectionOverview,
   ProjectDirectionStatusInfo,
 } from '../types/team'
+import { buildAuthorizedHeaders } from '../../../lib/apiAuth'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 const projectDirectionUpdatedEvent = 'taskpilot:project-direction-updated'
@@ -142,14 +143,14 @@ async function parseJsonResponse<T>(response: Response): Promise<T | null> {
   return text ? (JSON.parse(text) as T) : null
 }
 
-export async function fetchProjectDirectionStatus(teamId: string, userId: string): Promise<ProjectDirectionStatusInfo> {
+export async function fetchProjectDirectionStatus(teamId: string): Promise<ProjectDirectionStatusInfo> {
   const response = await fetch(
-    `${apiBaseUrl}/pm-assistant/project-direction/status?team_id=${encodeURIComponent(teamId)}&user_id=${encodeURIComponent(userId)}`,
+    `${apiBaseUrl}/pm-assistant/project-direction/status?team_id=${encodeURIComponent(teamId)}`,
     {
       method: 'GET',
-      headers: {
+      headers: await buildAuthorizedHeaders({
         Accept: 'application/json',
-      },
+      }),
     },
   )
 
@@ -165,8 +166,8 @@ export async function fetchProjectDirectionStatus(teamId: string, userId: string
   return toProjectDirectionStatus(payload as ProjectDirectionStatusApiResponse)
 }
 
-export async function fetchProjectDirectionOverview(teamId: string, userId: string): Promise<ProjectDirectionOverview | null> {
-  const status = await fetchProjectDirectionStatus(teamId, userId)
+export async function fetchProjectDirectionOverview(teamId: string): Promise<ProjectDirectionOverview | null> {
+  const status = await fetchProjectDirectionStatus(teamId)
   return status.overview
 }
 

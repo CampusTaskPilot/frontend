@@ -254,7 +254,7 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
     const result = await fetchPMReportStatus({
       teamId,
       reportScope,
-      userId: currentUserId,
+      targetUserId: currentUserId,
       signal,
     })
     if (!isActiveRef.current || signal?.aborted) {
@@ -394,7 +394,7 @@ export function ReportWriterTab({ teamId, currentUserId }: ReportWriterTabProps)
       const result = await requestPMReport({
         teamId,
         reportScope,
-        userId: currentUserId,
+        targetUserId: currentUserId,
         startDate,
         endDate,
       })

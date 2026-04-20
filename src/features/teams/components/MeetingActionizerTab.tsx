@@ -370,7 +370,6 @@ export function MeetingActionizerTab({
     try {
       const response = await requestMeetingActionizer({
         teamId,
-        requestedBy,
         title,
         meetingDate,
         participantNames: parseParticipantNames(participantInput),

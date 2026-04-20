@@ -49,7 +49,7 @@ export function useProjectDirectionOverview(
       setErrorMessage('')
 
       try {
-        const result = await fetchProjectDirectionStatus(teamId, currentUserId)
+        const result = await fetchProjectDirectionStatus(teamId)
         setJobStatus(result)
         setOverview(result.overview)
         return result

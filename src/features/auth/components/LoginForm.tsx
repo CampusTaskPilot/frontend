@@ -39,7 +39,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-5" onSubmit={ime.createSubmitHandler(handlePasswordLogin)} noValidate>
+    <form className="space-y-4" onSubmit={ime.createSubmitHandler(handlePasswordLogin)} noValidate>
       <InputField
         label="이메일"
         id="email"
@@ -66,8 +66,13 @@ export function LoginForm() {
         required
       />
 
-      <div className="flex justify-end">
-        <Button type="submit" onMouseDown={ime.preventBlurOnMouseDown} disabled={!email || !password || status === 'loading'}>
+      <div>
+        <Button
+          type="submit"
+          onMouseDown={ime.preventBlurOnMouseDown}
+          className="w-full py-3 text-base"
+          disabled={!email || !password || status === 'loading'}
+        >
           {status === 'loading' ? '로그인 중...' : '로그인'}
         </Button>
       </div>

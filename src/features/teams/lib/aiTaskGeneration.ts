@@ -2,6 +2,7 @@ import type {
   AiTaskGenerationStartResponse,
   AiTaskGenerationStatus,
 } from '../types/team'
+import { buildAuthorizedHeaders } from '../../../lib/apiAuth'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 
@@ -46,16 +47,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export async function startAiTaskGeneration(params: {
   teamId: string
-  requesterProfileId: string
 }): Promise<AiTaskGenerationStartResponse> {
   const response = await fetch(`${apiBaseUrl}/teams/${params.teamId}/ai-task-generation`, {
     method: 'POST',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      requester_profile_id: params.requesterProfileId,
     }),
+    body: JSON.stringify({}),
   })
 
   return parseResponse<AiTaskGenerationStartResponse>(response)
@@ -67,9 +65,9 @@ export async function fetchAiTaskGenerationStatus(
 ): Promise<AiTaskGenerationStatus> {
   const response = await fetch(`${apiBaseUrl}/teams/${teamId}/ai-task-generation/status`, {
     method: 'GET',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       Accept: 'application/json',
-    },
+    }),
     signal: options?.signal,
   })
 

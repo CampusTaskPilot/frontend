@@ -2,6 +2,7 @@ import type {
   AiTodoGenerationStartResponse,
   AiTodoGenerationStatus,
 } from '../types/team'
+import { buildAuthorizedHeaders } from '../../../lib/apiAuth'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 
@@ -60,17 +61,14 @@ function toReadableNetworkError(error: unknown) {
 
 export async function startAiTodoGeneration(params: {
   taskId: string
-  requesterProfileId: string
 }): Promise<AiTodoGenerationStartResponse> {
   try {
     const response = await fetch(`${apiBaseUrl}/tasks/${params.taskId}/ai-todo-generation`, {
       method: 'POST',
-      headers: {
+      headers: await buildAuthorizedHeaders({
         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requester_profile_id: params.requesterProfileId,
       }),
+      body: JSON.stringify({}),
     })
 
     return parseResponse<AiTodoGenerationStartResponse>(response)
@@ -89,9 +87,9 @@ export async function fetchAiTodoGenerationStatus(
 ): Promise<AiTodoGenerationStatus> {
   const response = await fetch(`${apiBaseUrl}/tasks/${taskId}/ai-todo-generation/status`, {
     method: 'GET',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       Accept: 'application/json',
-    },
+    }),
     signal: options?.signal,
   })
 
@@ -112,9 +110,9 @@ export async function fetchAiTodoGenerationStatuses(
   })
   const response = await fetch(`${apiBaseUrl}/teams/${teamId}/ai-todo-generation/statuses?${params.toString()}`, {
     method: 'GET',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       Accept: 'application/json',
-    },
+    }),
     signal: options?.signal,
   })
   const payload = await parseResponse<{ statuses: Record<string, AiTodoGenerationStatus> }>(response)

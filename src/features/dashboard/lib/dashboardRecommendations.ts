@@ -3,6 +3,7 @@ import type {
   DashboardTodayRecommendationItem,
   DashboardTodayRecommendationJobStatus,
 } from '../types'
+import { buildAuthorizedHeaders } from '../../../lib/apiAuth'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
 const dashboardDataUpdatedEvent = 'taskpilot:dashboard-data-updated'
@@ -110,16 +111,14 @@ function toTodayRecommendation(payload: TodayRecommendationApiResponse): Dashboa
   }
 }
 
-export async function startTodayRecommendation(userId: string): Promise<TodayRecommendationStartApiResponse> {
+export async function startTodayRecommendation(): Promise<TodayRecommendationStartApiResponse> {
   const response = await fetch(`${apiBaseUrl}/dashboard/today-recommendation`, {
     method: 'POST',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       'Content-Type': 'application/json',
       Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      requester_profile_id: userId,
     }),
+    body: JSON.stringify({}),
   })
 
   const payload = await parseJsonResponse<TodayRecommendationStartApiResponse | DashboardApiErrorPayload>(response)
@@ -135,18 +134,13 @@ export async function startTodayRecommendation(userId: string): Promise<TodayRec
   return payload as TodayRecommendationStartApiResponse
 }
 
-export async function fetchTodayRecommendationStatus(
-  userId: string,
-): Promise<DashboardTodayRecommendationJobStatus> {
-  const response = await fetch(
-    `${apiBaseUrl}/dashboard/today-recommendation/status?requester_profile_id=${encodeURIComponent(userId)}`,
-    {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-    },
-  )
+export async function fetchTodayRecommendationStatus(): Promise<DashboardTodayRecommendationJobStatus> {
+  const response = await fetch(`${apiBaseUrl}/dashboard/today-recommendation/status`, {
+    method: 'GET',
+    headers: await buildAuthorizedHeaders({
+      Accept: 'application/json',
+    }),
+  })
 
   const payload = await parseJsonResponse<TodayRecommendationStatusApiResponse | DashboardApiErrorPayload>(response)
 
@@ -167,17 +161,15 @@ export async function fetchTodayRecommendationStatus(
 
 export async function updateDashboardTodo(params: {
   todoId: string
-  userId: string
   isDone: boolean
 }): Promise<DashboardTodoUpdateApiResponse> {
   const response = await fetch(`${apiBaseUrl}/dashboard/todos/${encodeURIComponent(params.todoId)}`, {
     method: 'PATCH',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       'Content-Type': 'application/json',
       Accept: 'application/json',
-    },
+    }),
     body: JSON.stringify({
-      requester_profile_id: params.userId,
       is_done: params.isDone,
     }),
   })
@@ -197,16 +189,14 @@ export async function updateDashboardTodo(params: {
 
 export async function applyDashboardTodos(params: {
   todoIds: string[]
-  userId: string
 }): Promise<DashboardTodoApplyApiResponse> {
   const response = await fetch(`${apiBaseUrl}/dashboard/todos/apply`, {
     method: 'PATCH',
-    headers: {
+    headers: await buildAuthorizedHeaders({
       'Content-Type': 'application/json',
       Accept: 'application/json',
-    },
+    }),
     body: JSON.stringify({
-      requester_profile_id: params.userId,
       todo_ids: params.todoIds,
     }),
   })

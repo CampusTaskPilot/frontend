@@ -173,7 +173,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     let isMounted = true
     void (async () => {
       try {
-        const nextStatus = await fetchTodayRecommendationStatus(userId)
+        const nextStatus = await fetchTodayRecommendationStatus()
         if (!isMounted) return
 
         setJobStatus({
@@ -218,7 +218,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     const interval = window.setInterval(() => {
       void (async () => {
         try {
-          const nextStatus = await fetchTodayRecommendationStatus(userId)
+          const nextStatus = await fetchTodayRecommendationStatus()
           setJobStatus(nextStatus)
 
           if (nextStatus.recommendation) {
@@ -291,7 +291,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     setSuccessMessage('')
 
     try {
-      const started = await startTodayRecommendation(userId)
+      const started = await startTodayRecommendation()
       setJobStatus({
         status: started.status,
         cooldown_until: started.cooldown_until,
@@ -345,7 +345,6 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     try {
       await applyDashboardTodos({
         todoIds,
-        userId,
       })
 
       setApplyState('success')

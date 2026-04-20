@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   BriefcaseBusiness,
@@ -84,6 +84,23 @@ function calculateProfileCompleteness(params: {
   return Math.round((completedSignals / signals.length) * 100)
 }
 
+function ProfileDetailPanel({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex h-full min-w-0 flex-col rounded-[1.35rem] border border-campus-200/80 bg-gradient-to-b from-white to-campus-50/80 p-5">
+      <div className="border-b border-campus-200/70 pb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-500">{title}</p>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col pt-4">{children}</div>
+    </section>
+  )
+}
+
 function ExpandableTextBlock({
   title,
   content,
@@ -98,18 +115,16 @@ function ExpandableTextBlock({
 
   if (!trimmedContent) {
     return (
-      <div className="rounded-[1.35rem] bg-campus-50/70 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-500">{title}</p>
-        <p className="mt-3 text-sm leading-6 text-campus-500">{emptyMessage}</p>
-      </div>
+      <ProfileDetailPanel title={title}>
+        <p className="text-sm leading-6 text-campus-500">{emptyMessage}</p>
+      </ProfileDetailPanel>
     )
   }
 
   return (
-    <div className="rounded-[1.35rem] bg-campus-50/70 p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-500">{title}</p>
+    <ProfileDetailPanel title={title}>
       <p
-        className={`mt-3 break-words text-sm leading-7 text-campus-700 ${
+        className={`break-words text-sm leading-7 text-campus-700 ${
           isExpanded ? '' : 'line-clamp-4'
         }`}
       >
@@ -119,13 +134,13 @@ function ExpandableTextBlock({
         <button
           type="button"
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="mt-3 text-sm font-medium text-brand-700 transition-colors hover:text-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-300"
+          className="mt-4 self-start text-sm font-medium text-brand-700 transition-colors hover:text-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-300"
           aria-expanded={isExpanded}
         >
           {isExpanded ? '접기' : '더 보기'}
         </button>
       ) : null}
-    </div>
+    </ProfileDetailPanel>
   )
 }
 
@@ -139,16 +154,15 @@ function TagGroup({
   emptyMessage: string
 }) {
   return (
-    <div className="space-y-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-500">{title}</p>
-      <div className="flex flex-wrap gap-2">
+    <ProfileDetailPanel title={title}>
+      <div className="flex flex-1 flex-wrap content-start gap-2">
         {values.length > 0 ? (
           values.map((value) => <Badge key={`${title}-${value}`}>{value}</Badge>)
         ) : (
           <p className="text-sm leading-6 text-campus-500">{emptyMessage}</p>
         )}
       </div>
-    </div>
+    </ProfileDetailPanel>
   )
 }
 
@@ -392,7 +406,7 @@ export function ProfileViewPage() {
               </p>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid auto-rows-fr gap-4 xl:grid-cols-2">
               <ExpandableTextBlock
                 title="자기소개"
                 content={profile?.bio}
@@ -418,14 +432,11 @@ export function ProfileViewPage() {
                 values={preferredProjectTypes}
                 emptyMessage="선호 프로젝트 유형이 아직 등록되지 않았습니다."
               />
-              <div className="rounded-[1.35rem] bg-campus-50/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-campus-500">
-                  활동 가능 정보
-                </p>
-                <p className="mt-3 break-words text-sm leading-6 text-campus-700">
+              <ProfileDetailPanel title="활동 가능 정보">
+                <p className="break-words text-sm leading-7 text-campus-500">
                   {profile?.availability?.trim() || '참여 가능 시간 또는 활동 가능 정보가 아직 없습니다.'}
                 </p>
-              </div>
+              </ProfileDetailPanel>
             </div>
           </Card>
 

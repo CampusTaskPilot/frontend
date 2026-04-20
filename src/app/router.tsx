@@ -9,6 +9,7 @@ import { ProfileEditPage } from '../pages/ProfileEditPage'
 import { ProfilePage } from '../pages/ProfilePage'
 import { ProfileViewPage } from '../pages/ProfileViewPage'
 import { SignupPage } from '../pages/SignupPage'
+import { SignupVerifyEmailPage } from '../pages/SignupVerifyEmailPage'
 import { TeamCreatePage } from '../pages/TeamCreatePage'
 import { TeamListPage } from '../pages/TeamListPage'
 import { TeamWorkspacePage } from '../pages/TeamWorkspacePage'
@@ -124,6 +125,14 @@ export const appRouter = createBrowserRouter([
     element: (
       <PublicOnlyRoute>
         <SignupPage />
+      </PublicOnlyRoute>
+    ),
+  },
+  {
+    path: '/signup/verify-email',
+    element: (
+      <PublicOnlyRoute>
+        <SignupVerifyEmailPage />
       </PublicOnlyRoute>
     ),
   },
