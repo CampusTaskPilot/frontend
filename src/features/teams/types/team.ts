@@ -151,7 +151,6 @@ export interface TeamApplicationAnalysis {
   reasons: string[]
   strengths: string[]
   concerns: string[]
-  follow_up_questions: string[]
   confidence: TeamApplicationAnalysisConfidence | null
   input_tokens: number | null
   output_tokens: number | null
@@ -188,7 +187,6 @@ export interface TeamApplicationAnalysisLookupRecord extends TeamApplicationAnal
   reasons: string[]
   strengths: string[]
   concerns: string[]
-  follow_up_questions: string[]
 }
 
 export interface TeamApplicationActivityLog {

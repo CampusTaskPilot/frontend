@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import logo from '@/assets/logo.svg'
 import { AuthMenu } from '../components/common/AuthMenu'
 import { Button } from '../components/ui/Button'
 import { useAuth } from '../features/auth/context/useAuth'
@@ -150,9 +151,7 @@ export function LandingPage() {
         <header className="sticky top-0 z-30 border-b border-white/60 bg-white/72 backdrop-blur-xl">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-6 lg:px-8">
             <Link to="/" className="flex min-w-0 items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-campus-900 text-sm font-semibold tracking-[0.22em] text-white shadow-[0_16px_40px_rgba(26,34,51,0.16)]">
-                TP
-              </span>
+              <img src={logo} alt="TaskPilot logo" className="h-8 w-auto shrink-0" />
               <div className="min-w-0">
                 <p className="text-lg font-semibold tracking-tight text-campus-900">TaskPilot</p>
                 <p className="hidden break-keep text-sm text-campus-500 sm:block">

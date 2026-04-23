@@ -6,10 +6,10 @@ import {
   getCachedNotificationFeed,
   getNotificationFeed,
   markAllNotificationsReadAndSync,
-  markNotificationReadAndSync,
   subscribeNotificationRealtime,
   subscribeNotificationStore,
 } from '../lib/notificationStore'
+import { openNotification } from '../lib/openNotification'
 import type { NotificationItem } from '../types'
 
 const RECENT_LIMIT = 5
@@ -152,19 +152,12 @@ export function NotificationBell() {
   const currentUserId = user.id
 
   async function handleOpenNotification(item: NotificationItem) {
-    if (!item.is_read) {
-      try {
-        await markNotificationReadAndSync({
-          notificationId: item.id,
-          userId: currentUserId,
-        })
-      } catch (error) {
-        console.error('Failed to mark notification as read', error)
-      }
-    }
-
     setIsOpen(false)
-    navigate(item.href || '/notifications')
+    await openNotification({
+      item,
+      userId: currentUserId,
+      navigate,
+    })
   }
 
   async function handleMarkAllRead() {

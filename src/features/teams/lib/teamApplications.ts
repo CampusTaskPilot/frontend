@@ -59,7 +59,6 @@ const TEAM_APPLICATION_ANALYSIS_DETAIL_SELECT = `
   reasons,
   strengths,
   concerns,
-  follow_up_questions,
   confidence,
   input_tokens,
   output_tokens,
@@ -329,9 +328,6 @@ export async function fetchTeamApplicationAnalysis(params: {
     reasons: Array.isArray(row.reasons) ? row.reasons.filter((item): item is string => typeof item === 'string') : [],
     strengths: Array.isArray(row.strengths) ? row.strengths.filter((item): item is string => typeof item === 'string') : [],
     concerns: Array.isArray(row.concerns) ? row.concerns.filter((item): item is string => typeof item === 'string') : [],
-    follow_up_questions: Array.isArray(row.follow_up_questions)
-      ? row.follow_up_questions.filter((item): item is string => typeof item === 'string')
-      : [],
   }
 }
 

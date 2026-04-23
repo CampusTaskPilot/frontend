@@ -191,6 +191,7 @@ const stableSubtleButtonClass = 'hover:bg-brand-50 active:bg-brand-50'
 const autosaveDelayMs = 1800
 const aiTodoRefreshRetryDelayMs = 700
 const aiTodoRefreshRetryCount = 4
+const transientSaveMessageDurationMs = 3000
 const bodyScrollLockCountKey = 'taskpilotBodyScrollLockCount'
 const bodyScrollOverflowKey = 'taskpilotBodyScrollOverflow'
 let modalLayerSequence = 0
@@ -261,20 +262,20 @@ function EmptyTaskState({
       <div className="grid gap-6 lg:grid-cols-[1.5fr,1fr]">
         <div className="space-y-3">
           <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-100">
-            {isCompletedView ? 'Completed Tasks' : 'Task Workspace'}
+            {isCompletedView ? '완료된 업무' : '업무 관리'}
           </span>
           <h3 className="font-display text-2xl text-campus-900">
-            {isCompletedView ? '아직 완료된 Task가 없습니다.' : '팀 업무 흐름을 첫 Task부터 정리해보세요.'}
+            {isCompletedView ? '완료 처리된 업무가 아직 없습니다.' : '등록된 업무가 아직 없습니다.'}
           </h3>
           <p className="max-w-2xl text-sm leading-6 text-campus-600">
             {isCompletedView
-              ? '업무를 완료 처리하면 이 탭에 모여서 기록처럼 확인할 수 있습니다.'
-              : '큰 업무(Task)를 만들고 그 안에 Todo를 쌓아두면 역할 분담, 진행률, 마감 일정이 한 화면에서 정리됩니다.'}
+              ? '업무를 완료하면 이곳에서 히스토리를 다시 확인할 수 있습니다.'
+              : '업무를 추가하면 담당자, 마감일, 세부 작업을 한 화면에서 관리할 수 있습니다.'}
           </p>
           {!isCompletedView && isLeader && (
             <div className="flex flex-wrap gap-3">
               <Button type="button" onClick={onCreate}>
-                Task 생성
+                업무 추가
               </Button>
               <Button
                 type="button"
@@ -291,20 +292,20 @@ function EmptyTaskState({
           )}
           {!isCompletedView && !isLeader && (
             <div className="rounded-2xl border border-campus-200 bg-white/80 px-4 py-3 text-sm text-campus-600">
-              관리자가 Task를 만들고 담당자를 지정하면 여기에서 Todo를 읽고 진행할 수 있습니다.
+              관리자가 업무를 등록하고 담당자를 지정하면 여기에서 세부 작업을 확인하고 진행 상황을 업데이트할 수 있습니다.
             </div>
           )}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           <div className="rounded-3xl border border-campus-200 bg-white/90 p-4">
-            <p className="text-xs text-campus-500">Task 구조</p>
+            <p className="text-xs text-campus-500">업무 구조</p>
             <p className="mt-2 font-medium text-campus-900">기획서 초안 작성</p>
-            <p className="mt-1 text-xs text-campus-500">Task 안에 Todo 체크리스트가 함께 관리됩니다.</p>
+            <p className="mt-1 text-xs text-campus-500">업무 단위와 세부 체크리스트를 한 곳에서 관리합니다.</p>
           </div>
           <div className="rounded-3xl border border-campus-200 bg-white/90 p-4">
             <p className="text-xs text-campus-500">AI 보조</p>
-            <p className="mt-2 font-medium text-campus-900">추천과 자동 배분은 보조 역할</p>
-            <p className="mt-1 text-xs text-campus-500">핵심은 팀이 직접 관리하고, AI는 정리를 도와주는 방향입니다.</p>
+            <p className="mt-2 font-medium text-campus-900">업무 초안 작성과 배분을 빠르게 시작할 수 있습니다.</p>
+            <p className="mt-1 text-xs text-campus-500">AI 추천은 초안을 돕고, 최종 운영 기준은 팀이 직접 결정합니다.</p>
           </div>
         </div>
       </div>
@@ -454,7 +455,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingChanges, setIsSavingChanges] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const [saveMessage, setSaveMessage] = useState('')
+  const [saveNotice, setSaveNotice] = useState({ message: '', version: 0 })
   const [activeView, setActiveView] = useState<TaskViewKey>('active')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [sortBy, setSortBy] = useState<TaskSortKey>('priority')
@@ -495,6 +496,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const hasLoadedRef = useRef(false)
   const restoredWorkspaceDraftRef = useRef(false)
   const isActiveRef = useRef(false)
+  const saveMessage = saveNotice.message
 
   useEffect(() => {
     isActiveRef.current = true
@@ -504,12 +506,37 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     }
   }, [])
 
+  const showSaveMessage = useCallback((message: string) => {
+    setSaveNotice((current) => ({ message, version: current.version + 1 }))
+  }, [])
+
+  const clearSaveMessage = useCallback(() => {
+    setSaveNotice((current) =>
+      current.message ? { message: '', version: current.version + 1 } : current,
+    )
+  }, [])
+
+  useEffect(() => {
+    if (!saveMessage || isSavingChanges) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      clearSaveMessage()
+    }, transientSaveMessageDurationMs)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [clearSaveMessage, isSavingChanges, saveMessage, saveNotice.version])
+
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.user_id, member] as const)),
     [members],
   )
   const isLeader = currentUserRole === 'leader'
-  const canManageTaskStatusByRole = currentUserRole === 'leader' || currentUserRole === 'admin'
+  const isManager = currentUserRole === 'leader' || currentUserRole === 'admin' || currentUserRole === 'owner'
+  const canManageTaskStatusByRole = isManager
   const workspaceDraftStorageKey = useMemo(() => `team-workspace-draft:${teamId}`, [teamId])
   const isEditing = editingTaskId.length > 0
   const isTaskModalOpen = showCreateForm
@@ -569,6 +596,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       Boolean(currentUserId) && (isLeader || task.assignee_id === currentUserId),
     [currentUserId, isLeader],
   )
+  const canTriggerAiTodoGeneration = useCallback(
+    (task: TeamTaskWithTodos) =>
+      Boolean(currentUserId) && (isManager || task.assignee_id === currentUserId),
+    [currentUserId, isManager],
+  )
+  const canViewAiTodoStatus = canTriggerAiTodoGeneration
 
   const canChangeTaskStatus = useCallback(
     (task: TeamTaskWithTodos) =>
@@ -860,7 +893,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           setPendingChanges(restoredSnapshot.pendingChanges)
           draftTasksRef.current = restoredSnapshot.draftTasks
           ensureExpandedTasks(restoredSnapshot.draftTasks)
-          setSaveMessage('저장되지 않은 워크스페이스 변경사항을 복구했습니다.')
+          showSaveMessage('임시 저장된 변경사항을 복원했습니다.')
           return restoredSnapshot.draftTasks
         }
 
@@ -880,7 +913,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         setIsLoading(false)
       }
     }
-  }, [ensureExpandedTasks, loadWorkspaceDraftSnapshot, teamId])
+  }, [ensureExpandedTasks, loadWorkspaceDraftSnapshot, showSaveMessage, teamId])
 
   useEffect(() => {
     void loadTasks()
@@ -901,7 +934,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
     isSavingRef.current = true
     setIsSavingChanges(true)
-    setSaveMessage(trigger === 'manual' ? '변경사항을 저장하는 중입니다...' : '백그라운드에서 저장 중입니다...')
+    showSaveMessage(trigger === 'manual' ? '변경사항을 저장하고 있습니다...' : '백그라운드에서 변경사항을 저장하고 있습니다...')
     setErrorMessage('')
 
     try {
@@ -962,17 +995,17 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       pendingChangesRef.current = cleared
       setPendingChanges(cleared)
       clearWorkspaceDraftSnapshot()
-      setSaveMessage('모든 변경사항이 저장되었습니다.')
+      showSaveMessage('변경사항이 저장되었습니다.')
       return true
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '변경사항을 저장하지 못했습니다.')
-      setSaveMessage('')
+      clearSaveMessage()
       return false
     } finally {
       isSavingRef.current = false
       setIsSavingChanges(false)
     }
-  }, [buildAssigneeProfile, clearWorkspaceDraftSnapshot, ensureExpandedTasks])
+  }, [buildAssigneeProfile, clearSaveMessage, clearWorkspaceDraftSnapshot, ensureExpandedTasks, showSaveMessage])
 
   useEffect(() => {
     if (!isDirty || isSavingChanges) {
@@ -1190,12 +1223,16 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
     }
   }, [isLeader, loadAiAssignmentStatus])
 
-  const persistedTaskIds = useMemo(
-    () => tasks.map((task) => task.id).filter((taskId) => !taskId.startsWith('task-draft-')),
-    [tasks],
+  const aiTodoStatusTaskIds = useMemo(
+    () =>
+      tasks
+        .filter((task) => !task.id.startsWith('task-draft-') && canViewAiTodoStatus(task))
+        .map((task) => task.id)
+        .sort(),
+    [canViewAiTodoStatus, tasks],
   )
 
-  const persistedTaskIdsKey = useMemo(() => [...persistedTaskIds].sort().join('|'), [persistedTaskIds])
+  const persistedTaskIdsKey = useMemo(() => [...aiTodoStatusTaskIds].join('|'), [aiTodoStatusTaskIds])
   const runningAiTodoTaskIds = useMemo(
     () =>
       Object.entries(aiTodoStatuses)
@@ -1207,9 +1244,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
   const runningAiTodoTaskIdsKey = useMemo(() => runningAiTodoTaskIds.join('|'), [runningAiTodoTaskIds])
 
   useEffect(() => {
-    if (!isLeader || persistedTaskIds.length === 0) return
+    if (aiTodoStatusTaskIds.length === 0) return
 
-    const missingTaskIds = persistedTaskIds.filter(
+    const missingTaskIds = aiTodoStatusTaskIds.filter(
       (taskId) => !loadedAiTodoStatusTaskIdsRef.current.has(taskId),
     )
     if (missingTaskIds.length === 0) {
@@ -1233,7 +1270,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       cancelled = true
       controller.abort()
     }
-  }, [isLeader, loadAiTodoStatuses, persistedTaskIds, persistedTaskIdsKey])
+  }, [aiTodoStatusTaskIds, loadAiTodoStatuses, persistedTaskIdsKey])
 
   useEffect(() => {
     if (!isAiGenerating) return
@@ -1744,7 +1781,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       }
 
       resetTaskForm()
-      setSaveMessage('변경사항이 로컬에 반영되었습니다. 잠시 후 자동 저장됩니다.')
+      showSaveMessage('변경사항이 반영되었습니다. 자동으로 저장됩니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : isEditing ? 'Task를 수정하지 못했습니다.' : 'Task를 생성하지 못했습니다.')
     } finally {
@@ -1899,10 +1936,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       if (editingTaskId && intent.taskIds.includes(editingTaskId)) {
         resetTaskForm()
       }
-      setSaveMessage(
+      showSaveMessage(
         intent.taskIds.length === 1
-          ? 'Task 삭제가 로컬에 반영되었습니다. 저장 시 서버에도 반영됩니다.'
-          : `${intent.taskIds.length}개의 Task 삭제가 로컬에 반영되었습니다.`,
+          ? '업무 삭제가 반영되었습니다. 저장 시 서버에도 적용됩니다.'
+          : `${intent.taskIds.length}개의 업무 삭제가 반영되었습니다.`,
       )
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Task를 삭제하지 못했습니다.')
@@ -1957,7 +1994,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           },
         }
       })
-      setSaveMessage('담당자 변경이 로컬에 반영되었습니다.')
+      showSaveMessage('담당자 변경이 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '담당자를 변경하지 못했습니다.')
     }
@@ -2024,7 +2061,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       }))
 
       setTodoDrafts((current) => ({ ...current, [taskId]: '' }))
-      setSaveMessage('Todo가 로컬에 추가되었습니다.')
+      showSaveMessage('세부 작업이 추가되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Todo를 추가하지 못했습니다.')
     }
@@ -2082,7 +2119,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           },
         }
       })
-      setSaveMessage('Todo 상태가 로컬에 반영되었습니다.')
+      showSaveMessage('세부 작업 상태가 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Todo 상태를 바꾸지 못했습니다.')
     }
@@ -2182,10 +2219,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       })
       setTodoSelectionTaskIds((current) => ({ ...current, [ownerTask.id]: false }))
       setTodoDeleteIntent(null)
-      setSaveMessage(
+      showSaveMessage(
         deletedCount === 1
-          ? 'Todo가 로컬에서 제거되었습니다.'
-          : `선택한 Todo ${deletedCount}개가 로컬에서 제거되었습니다.`,
+          ? '세부 작업이 제거되었습니다.'
+          : `선택한 세부 작업 ${deletedCount}개가 제거되었습니다.`,
       )
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Todo를 삭제하지 못했습니다.')
@@ -2238,7 +2275,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           },
         }
       })
-      setSaveMessage('Task 상태가 로컬에 반영되었습니다.')
+      showSaveMessage('업무 상태가 반영되었습니다.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Task 상태를 변경하지 못했습니다.')
     }
@@ -2300,7 +2337,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
       taskStatus?.status === 'running' ||
       (taskStatus?.status === 'cooldown' && (taskStatus.remaining_seconds ?? 0) > 0)
 
-    if (!targetTask || !isLeader || !currentUserId || isBusy) return
+    if (!targetTask || !currentUserId || !canTriggerAiTodoGeneration(targetTask) || isBusy) return
 
     void (async () => {
       setAiTodoStartingTaskId(taskId)
@@ -2353,7 +2390,17 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           })
         }
 
-        setErrorMessage(error instanceof Error ? error.message : 'AI Todo 생성을 시작하지 못했습니다.')
+        if (error instanceof AiTodoGenerationApiError) {
+          if (error.statusCode === 403) {
+            setErrorMessage('이 Task의 AI Todo 자동생성은 팀 leader/admin 또는 담당자만 사용할 수 있습니다.')
+          } else if (error.statusCode === 409) {
+            setErrorMessage('현재 이 Task의 Todo 자동생성이 진행 중입니다.')
+          } else {
+            setErrorMessage(error.message)
+          }
+        } else {
+          setErrorMessage(error instanceof Error ? error.message : 'AI Todo 생성을 시작하지 못했습니다.')
+        }
       } finally {
         setAiTodoStartingTaskId('')
       }
@@ -2411,11 +2458,11 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
           <div className="space-y-4">
             <div className="space-y-2">
               <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-600 ring-1 ring-inset ring-brand-100">
-                Team Tasks
+                팀 업무 관리
               </span>
-              <h2 className="font-display text-3xl text-campus-900">업무 흐름을 Task 중심으로<br></br>정리해보세요.</h2>
+              <h2 className="font-display text-3xl text-campus-900">팀 업무를 한곳에서<br></br>관리해 보세요.</h2>
               <p className="max-w-2xl text-sm leading-6 text-campus-600">
-                큰 업무(Task) 안에 Todo를 묶어두고, 담당자와 마감일, 진행률까지 한 번에 확인할 수 있는 팀 협업 보드입니다.
+                업무별 담당자, 마감일, 세부 작업 진행 현황을 한 화면에서 확인하고 바로 업데이트할 수 있습니다.
               </p>
             </div>
 
@@ -2435,7 +2482,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               <div>
                 <p className="text-sm font-semibold text-campus-900">빠른 액션</p>
                 <p className="mt-1 text-xs leading-5 text-campus-500">
-                  AI는 추천과 배분을 보조하고, 실제 업무 구조는 팀이 직접 관리하는 흐름으로 설계했습니다.
+                  자주 쓰는 작업을 바로 실행하고, AI 보조 기능으로 초안 작성과 업무 배분을 빠르게 시작할 수 있습니다.
                 </p>
               </div>
               {isLeader ? (
@@ -2451,7 +2498,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                       setShowCreateForm(true)
                     }}
                   >
-                    {isTaskModalOpen && !isEditing ? '생성 폼 닫기' : 'Task 생성'}
+                    {isTaskModalOpen && !isEditing ? '업무 등록 닫기' : '업무 추가'}
                   </Button>
                   <Button
                     type="button"
@@ -2468,7 +2515,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                 </div>
               ) : (
                 <div className="rounded-3xl border border-campus-200 bg-campus-50 p-4 text-sm text-campus-600">
-                  이 영역은 관리자용입니다. Task 생성과 팀 단위 AI 추천은 팀 리더가 관리합니다.
+                  이 영역은 관리자 전용입니다. 업무 등록과 AI 추천, 자동 배분은 팀 리더가 관리합니다.
                 </div>
               )}
               <div className="rounded-3xl border border-brand-100 bg-brand-50 p-4">
@@ -2476,10 +2523,10 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   <div>
                     <p className="text-sm font-semibold text-brand-600">AI PM 보조</p>
                     <p className="mt-1 text-xs leading-5 text-campus-600">
-                      추천 Task와 자동 배분은 팀워크를 보조하는 기능입니다.
+                      AI 추천과 자동 배분은 업무 초안 정리와 운영 속도를 높이기 위한 보조 기능입니다.
                     </p>
                   </div>
-                  <TaskMetaBadge tone="brand">Beta</TaskMetaBadge>
+                  <TaskMetaBadge tone="brand">미리보기</TaskMetaBadge>
                 </div>
                 {aiTaskHelpMessage && (
                   <p className="mt-3 text-xs leading-5 text-campus-700">{aiTaskHelpMessage}</p>
@@ -2643,13 +2690,13 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         <div className="flex flex-col gap-4 xl:flex-row xl:justify-between xl:gap-6">
           <div className="xl:self-start">
             <h3 className="font-display text-2xl text-campus-900">업무 보드</h3>
-            <p className="mt-1 text-sm text-campus-500">Active와 Completed를 나눠 집중도를 유지하고, 필요한 Task만 빠르게 찾아볼 수 있습니다.</p>
+            <p className="mt-1 text-sm text-campus-500">진행 중인 업무와 완료된 업무를 구분해 현재 해야 할 일에 더 빠르게 집중할 수 있습니다.</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center rounded-full bg-campus-100 px-3 py-1 text-xs font-medium text-campus-700 ring-1 ring-inset ring-campus-200">
-                Active는 진행 중인 업무 중심
+                진행 중 탭은 현재 처리할 업무 중심
               </span>
               <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-100">
-                Completed는 완료 기록 보관
+                완료 탭은 종료된 업무 이력 확인
               </span>
             </div>
           </div>
@@ -2670,11 +2717,11 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     }
                   }}
                 >
-                  {taskSelectionMode ? '선택 모드 종료' : 'Task 선택 삭제'}
+                  {taskSelectionMode ? '선택 모드 종료' : '업무 선택 삭제'}
                 </Button>
                 {taskSelectionMode && (
                   <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-campus-600 ring-1 ring-inset ring-campus-200">
-                    {selectedTaskIds.length === 0 ? '삭제할 Task를 선택하세요' : `${selectedTaskIds.length}개 선택됨`}
+                    {selectedTaskIds.length === 0 ? '삭제할 업무를 선택해 주세요' : `${selectedTaskIds.length}개 선택됨`}
                   </span>
                 )}
                 {taskSelectionMode && selectedTaskIds.length > 0 && (
@@ -2685,7 +2732,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     className="border-rose-200 text-rose-700 hover:bg-rose-50"
                     onClick={() => handleDeleteTaskRequest(selectedTaskIds)}
                   >
-                    선택한 Task 삭제
+                    선택한 업무 삭제
                   </Button>
                 )}
               </div>
@@ -2701,7 +2748,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     : 'text-campus-600 hover:bg-campus-50',
                 )}
               >
-                Active Tasks
+                진행 중
               </button>
               <button
                 type="button"
@@ -2713,7 +2760,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     : 'text-campus-600 hover:bg-campus-50',
                 )}
               >
-                Completed Tasks
+                완료됨
               </button>
             </div>
           </div>
@@ -2722,12 +2769,12 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr),minmax(0,0.8fr),minmax(0,0.8fr),auto,auto]">
           <label className="space-y-2 text-sm font-medium text-campus-700">
             <span>검색</span>
-            <input
-              value={searchKeyword}
-              onChange={(event) => setSearchKeyword(event.target.value)}
-              placeholder="Task 제목, 설명, 담당자 검색"
-              className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400"
-            />
+              <input
+                value={searchKeyword}
+                onChange={(event) => setSearchKeyword(event.target.value)}
+                placeholder="업무명, 설명, 담당자 검색"
+                className="w-full rounded-2xl border border-campus-200 bg-white px-4 py-3 text-sm text-campus-900 outline-none transition focus:border-brand-400"
+              />
           </label>
 
           <label className="space-y-2 text-sm font-medium text-campus-700">
@@ -2743,9 +2790,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
             </select>
           </label>
 
-          <label className="space-y-2 text-sm font-medium text-campus-700">
-            <span>할당 보기</span>
-            <button
+            <label className="space-y-2 text-sm font-medium text-campus-700">
+              <span>담당자 기준 보기</span>
+              <button
               type="button"
               onClick={() => setShowMineOnly((current) => !current)}
               className={cn(
@@ -2755,7 +2802,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   : 'border-campus-200 text-campus-700',
               )}
             >
-              <span>{showMineOnly ? '내 Task만' : '전체 보기'}</span>
+              <span>{showMineOnly ? '내 업무만' : '전체 업무'}</span>
               <span className="text-xs">{showMineOnly ? 'ON' : 'OFF'}</span>
             </button>
           </label>
@@ -2778,7 +2825,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
               onClick={() => void flushPendingChanges('manual')}
               disabled={isSavingChanges || !isDirty}
             >
-              {isSavingChanges ? '저장 중...' : isDirty ? '지금 저장' : '자동 저장 완료'}
+              {isSavingChanges ? '저장 중...' : isDirty ? '변경사항 저장' : '저장 완료'}
             </Button>
           </div>
         </div>
@@ -2812,7 +2859,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
 
       {isLoading ? (
         <Card>
-          <p className="text-sm text-campus-600">업무 탭을 불러오는 중입니다...</p>
+          <p className="text-sm text-campus-600">업무 목록을 불러오고 있습니다...</p>
         </Card>
       ) : visibleTasks.length === 0 ? (
         <EmptyTaskState
@@ -2845,15 +2892,16 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
             const isAiTodoGenerating = aiTodoStatusValue === 'pending' || aiTodoStatusValue === 'running'
             const isAiTodoCooldownActive =
               aiTodoStatusValue === 'cooldown' && (aiTodoStatus?.remaining_seconds ?? 0) > 0
+            const canUseAiTodo = canTriggerAiTodoGeneration(task)
             const aiTodoDisabled =
-              !isLeader || !currentUserId || aiTodoStartingTaskId === task.id || isAiTodoGenerating || isAiTodoCooldownActive
+              !canUseAiTodo || !currentUserId || aiTodoStartingTaskId === task.id || isAiTodoGenerating || isAiTodoCooldownActive
             const aiTodoButtonLabel = aiTodoStartingTaskId === task.id || isAiTodoGenerating
               ? 'AI가 Todo 생성중...'
               : isAiTodoCooldownActive
                 ? `다시 생성까지 ${formatCountdown(aiTodoStatus?.remaining_seconds ?? 0)}`
                 : 'AI Todo 생성'
             const aiTodoHelpMessage = isAiTodoGenerating
-              ? 'AI가 이 Task의 세부 Todo를 정리하고 있어요.'
+              ? 'AI가 이 업무의 세부 작업을 정리하고 있습니다.'
               : isAiTodoCooldownActive
                 ? `${formatCountdown(aiTodoStatus?.remaining_seconds ?? 0)} 후 다시 생성할 수 있어요.`
                 : aiTodoStatus?.latest_log?.status === 'failed'
@@ -2862,7 +2910,9 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     ? aiTodoStatus.latest_log.created_count > 0
                       ? `최근 실행으로 ${aiTodoStatus.latest_log.created_count}개의 Todo가 추가됐어요.`
                       : '최근 실행에서는 새로 추가할 Todo가 없었어요.'
-                    : '관리자만 실행할 수 있으며, 같은 Task에는 5분 쿨타임이 적용됩니다.'
+                    : canUseAiTodo
+                      ? '같은 업무는 진행 중인 생성이 끝난 뒤 다시 요청할 수 있습니다.'
+                      : '리더/관리자 또는 담당자만 실행할 수 있습니다.'
 
             return (
               <Card
@@ -2901,7 +2951,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                         {task.completed_at && <span className="text-xs text-campus-500">완료 시각 {formatDateTimeLabel(task.completed_at)}</span>}
                       </div>
                       <p className="mt-2 text-sm leading-6 text-campus-600">
-                        {task.description || '설명이 아직 없습니다. 간단한 목적이나 결과물을 적어두면 팀원들이 맥락을 빨리 파악할 수 있습니다.'}
+                        {task.description || '업무 설명이 아직 입력되지 않았습니다. 목표나 산출물을 남겨두면 팀원들이 맥락을 빠르게 파악할 수 있습니다.'}
                       </p>
                       {!isExpanded && (
                         <div className="mt-3 rounded-3xl border border-campus-200 bg-campus-50 px-4 py-3 transition-colors hover:border-rose-200/80 hover:bg-rose-50/40">
@@ -2929,7 +2979,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                               )}
                             </div>
                           ) : (
-                            <p className="mt-2 text-sm text-campus-500">아직 등록된 Todo가 없습니다.</p>
+                            <p className="mt-2 text-sm text-campus-500">등록된 세부 작업이 없습니다.</p>
                           )}
                         </div>
                       )}
@@ -2999,16 +3049,16 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                       </select>
                     </label>
                     {!canEditStatus && (
-                      <p className="text-xs text-campus-500">담당자가 지정된 Task는 해당 담당자만 상태를 변경할 수 있습니다.</p>
+                      <p className="text-xs text-campus-500">담당자가 지정된 업무는 해당 담당자만 상태를 변경할 수 있습니다.</p>
                     )}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-campus-200 bg-campus-50 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-campus-500">
-                    <span>Task 내부 Todo List</span>
+                    <span>세부 작업 체크리스트</span>
                     <span className="h-1 w-1 rounded-full bg-campus-200" />
-                    <span>{meta.total === 0 ? '체크리스트를 추가해 세부 작업을 나눠보세요.' : `${meta.completed}개 완료됨`}</span>
+                    <span>{meta.total === 0 ? '세부 작업을 추가해 진행 단계를 나눠보세요.' : `${meta.completed}개 완료`}</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant="ghost" className={stableGhostButtonClass} onClick={() => setExpandedTasks((current) => ({ ...current, [task.id]: !isExpanded }))}>
@@ -3041,7 +3091,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                         )}
                       </>
                     )}
-                    {isLeader ? (
+                    {canUseAiTodo ? (
                       <Button
                         type="button"
                         size="sm"
@@ -3054,7 +3104,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                       </Button>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-campus-500 ring-1 ring-inset ring-campus-200">
-                        AI Todo 생성은 관리자만 가능
+                        리더/관리자 또는 담당자만 사용 가능
                       </span>
                     )}
                   </div>
@@ -3063,7 +3113,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                   <p className="text-xs text-campus-500">{aiTodoHelpMessage}</p>
                   {isTodoSelectionMode && canEditTodos && (
                     <p className="text-xs text-rose-600">
-                      삭제할 Todo만 선택한 뒤 `선택한 Todo 삭제`를 눌러 잘못 만든 항목을 한 번에 지울 수 있습니다.
+                      삭제할 항목만 선택한 뒤 `선택한 Todo 삭제`를 누르면 한 번에 정리할 수 있습니다.
                     </p>
                   )}
                 </div>
@@ -3073,7 +3123,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     <div className="space-y-3">
                       {task.todos.length === 0 ? (
                         <div className="rounded-3xl border border-dashed border-campus-200 bg-campus-50 px-4 py-5 text-sm text-campus-500">
-                          아직 Todo가 없습니다. 첫 세부 작업을 추가해 Task를 실제 실행 단계로 바꿔보세요.
+                          등록된 세부 작업이 없습니다. 필요한 실행 항목을 추가해 진행을 시작해 보세요.
                         </div>
                       ) : (
                         task.todos.map((todo) => (
@@ -3134,8 +3184,8 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                     <div className="rounded-3xl border border-campus-200 bg-campus-50 p-4">
                       <div className="space-y-3">
                         <div>
-                          <p className="text-sm font-semibold text-campus-900">Todo 빠른 추가</p>
-                          <p className="mt-1 text-xs leading-5 text-campus-500">Task를 세부 단계로 나눠 팀원들이 바로 체크할 수 있게 만드세요.</p>
+                          <p className="text-sm font-semibold text-campus-900">세부 작업 추가</p>
+                          <p className="mt-1 text-xs leading-5 text-campus-500">실행할 항목을 추가하면 체크리스트에 바로 반영됩니다.</p>
                         </div>
                         {canEditTodos ? (
                           <>
@@ -3159,7 +3209,7 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                               </Button>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              {isLeader && (
+                              {canUseAiTodo && (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -3172,13 +3222,13 @@ export function TeamTasksTab({ teamId, currentUserId, currentUserRole, members }
                                 </Button>
                               )}
                               <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs text-campus-500 ring-1 ring-inset ring-campus-200">
-                                담당자만 체크와 추가가 가능합니다.
+                                담당자만 체크 처리와 항목 추가가 가능합니다.
                               </span>
                             </div>
                           </>
                         ) : (
                           <div className="rounded-2xl border border-campus-200 bg-white px-4 py-4 text-sm text-campus-500">
-                            이 Task의 Todo는 담당자만 추가하거나 완료 처리할 수 있습니다.
+                            이 업무의 세부 작업은 담당자만 추가하거나 완료 처리할 수 있습니다.
                           </div>
                         )}
                       </div>

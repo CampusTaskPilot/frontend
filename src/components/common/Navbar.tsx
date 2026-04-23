@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import logo from '@/assets/logo.svg'
 import { AuthMenu } from './AuthMenu'
 import { PageContainer } from '../layout/PageContainer'
 import { NotificationBell } from '../../features/notifications/components/NotificationBell'
@@ -10,9 +11,7 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-white/70 bg-white/80 backdrop-blur-xl">
       <PageContainer className="flex min-h-[var(--app-header-height)] items-center justify-between gap-4">
         <Link to="/" className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-campus-900 text-sm font-bold uppercase tracking-[0.24em] text-white shadow-card">
-            tp
-          </span>
+          <img src={logo} alt="TaskPilot logo" className="h-8 w-auto shrink-0" />
           <div className="min-w-0 space-y-1">
             <p className="font-display text-lg font-semibold tracking-tight text-campus-900 sm:text-xl">
               {SERVICE_NAME}

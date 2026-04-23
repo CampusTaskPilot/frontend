@@ -207,7 +207,7 @@ function AnalysisPanel({
       </div>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-campus-900">맞는 점</h3>
+        <h3 className="text-sm font-semibold text-campus-900">강점</h3>
         {analysisDetail.strengths.length > 0 ? (
           <ul className="space-y-1 text-sm leading-6 text-campus-700">
             {analysisDetail.strengths.map((item) => (
@@ -220,7 +220,7 @@ function AnalysisPanel({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-campus-900">우려 포인트</h3>
+        <h3 className="text-sm font-semibold text-campus-900">우려할 점</h3>
         {analysisDetail.concerns.length > 0 ? (
           <ul className="space-y-1 text-sm leading-6 text-campus-700">
             {analysisDetail.concerns.map((item) => (
@@ -228,20 +228,7 @@ function AnalysisPanel({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-campus-500">현재 기준에서 큰 우려 포인트는 없습니다.</p>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-campus-900">추가 확인 질문</h3>
-        {analysisDetail.follow_up_questions.length > 0 ? (
-          <ul className="space-y-1 text-sm leading-6 text-campus-700">
-            {analysisDetail.follow_up_questions.map((item) => (
-              <li key={item}>- {item}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-campus-500">추천 질문이 없습니다.</p>
+          <p className="text-sm text-campus-500">현재 기준에서 우려할 점은 없습니다.</p>
         )}
       </section>
 
@@ -461,7 +448,7 @@ export function TeamApplicationsTab({
                     />
                   </Button>
                   {application.status === 'pending' ? (
-                    <>
+                    <div className="flex flex-nowrap items-center gap-2">
                       <Button type="button" disabled={isBusy} onClick={() => void onUpdateStatus(application, 'accepted')}>
                         {isBusy ? <LoaderCircle aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" /> : null}
                         수락
@@ -469,7 +456,7 @@ export function TeamApplicationsTab({
                       <Button type="button" variant="ghost" disabled={isBusy} onClick={() => void onUpdateStatus(application, 'rejected')}>
                         거절
                       </Button>
-                    </>
+                    </div>
                   ) : null}
                 </div>
               </div>

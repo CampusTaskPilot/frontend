@@ -8,10 +8,10 @@ import {
   getCachedNotificationFeed,
   getNotificationFeed,
   markAllNotificationsReadAndSync,
-  markNotificationReadAndSync,
   subscribeNotificationRealtime,
   subscribeNotificationStore,
 } from '../features/notifications/lib/notificationStore'
+import { openNotification } from '../features/notifications/lib/openNotification'
 import type { NotificationItem } from '../features/notifications/types'
 
 type NotificationFilter = 'all' | 'unread'
@@ -149,20 +149,11 @@ export function NotificationsPage() {
   const currentUserId = user.id
 
   async function handleMarkRead(item: NotificationItem) {
-    if (item.is_read) {
-      navigate(item.href || '/notifications')
-      return
-    }
-
-    try {
-      await markNotificationReadAndSync({
-        notificationId: item.id,
-        userId: currentUserId,
-      })
-      navigate(item.href || '/notifications')
-    } catch (error) {
-      console.error('Failed to mark notification as read', error)
-    }
+    await openNotification({
+      item,
+      userId: currentUserId,
+      navigate,
+    })
   }
 
   async function handleMarkAllRead() {

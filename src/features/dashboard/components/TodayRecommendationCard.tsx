@@ -144,6 +144,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
   const [applyState, setApplyState] = useState<ApplyState>('idle')
   const [successMessage, setSuccessMessage] = useState('')
   const [isDraftHydrated, setIsDraftHydrated] = useState(false)
+  const [isRequestSubmitting, setIsRequestSubmitting] = useState(false)
 
   const draftKey = useMemo(() => (userId ? getTodayRecommendationDraftKey(userId) : ''), [userId])
 
@@ -152,6 +153,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     setJobStatus(null)
     setRecommendation(null)
     setCheckedTodoIds([])
+    setIsRequestSubmitting(false)
     setErrorMessage('')
     setApplyState('idle')
     setSuccessMessage('')
@@ -280,11 +282,19 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
   }, [jobStatus?.cooldown_until, jobStatus?.status, recommendation])
 
   const requestRecommendation = async () => {
+    if (isRequestSubmitting || jobStatus?.status === 'pending' || jobStatus?.status === 'running') {
+      return
+    }
+
+    if ((jobStatus?.remaining_seconds ?? 0) > 0) {
+      return
+    }
     if (!userId) {
       setErrorMessage('로그인이 필요합니다.')
       return
     }
 
+    setIsRequestSubmitting(true)
     setErrorMessage('')
     setCheckedTodoIds([])
     setApplyState('idle')
@@ -307,13 +317,32 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     } catch (error) {
       if (error instanceof DashboardRecommendationApiError) {
         const detail = error.payload?.detail
-        if (detail && typeof detail === 'object' && detail.status === 'cooldown') {
-          setJobStatus((current) => toCooldownJobStatus(current, detail))
-          return
+        if (detail && typeof detail === 'object') {
+          if (detail.status === 'cooldown') {
+            setJobStatus((current) => toCooldownJobStatus(current, detail))
+            return
+          }
+
+          if (detail.status === 'pending' || detail.status === 'running') {
+            setJobStatus((current) => ({
+              status: detail.status as 'pending' | 'running',
+              cooldown_until: detail.cooldown_until ?? current?.cooldown_until ?? null,
+              remaining_seconds: detail.remaining_seconds ?? current?.remaining_seconds ?? 0,
+              error_message: null,
+              recommended_count: current?.recommended_count ?? 0,
+              last_run_at: current?.last_run_at ?? null,
+              current_job_id: detail.current_job_id ?? current?.current_job_id ?? null,
+              latest_log: current?.latest_log ?? null,
+              recommendation: null,
+            }))
+            return
+          }
         }
       }
 
       setErrorMessage(error instanceof Error ? error.message : '오늘 할 일 추천을 시작하지 못했습니다.')
+    } finally {
+      setIsRequestSubmitting(false)
     }
   }
 
@@ -372,9 +401,14 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
     recommendedTodoIds.every((todoId) => checkedTodoIds.includes(todoId))
   const showEmptyResult = viewState === 'success' && totalCount === 0
   const isCoolingDown = (jobStatus?.remaining_seconds ?? 0) > 0
+  const isRecommendationRunning =
+    isRequestSubmitting || jobStatus?.status === 'pending' || jobStatus?.status === 'running'
   const recommendationButtonLabel = isCoolingDown
     ? `다시 추천까지 ${formatCountdown(jobStatus?.remaining_seconds ?? 0)}`
     : '오늘 할 일 추천받기'
+  const retryRecommendationHelperText = isCoolingDown
+    ? `다시 추천까지 ${formatCountdown(jobStatus?.remaining_seconds ?? 0)} 남았어요.`
+    : '현재 추천 결과를 바탕으로 새 추천을 다시 생성할 수 있어요.'
   const selectionProgress = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0
 
   return (
@@ -416,7 +450,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
                 <Button
                   type="button"
                   onClick={() => void requestRecommendation()}
-                  disabled={!userId || isCoolingDown}
+                  disabled={!userId || isCoolingDown || isRecommendationRunning}
                 >
                   {recommendationButtonLabel}
                 </Button>
@@ -448,7 +482,7 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
               <Button
                 type="button"
                 onClick={() => void requestRecommendation()}
-                disabled={!userId || isCoolingDown}
+                disabled={!userId || isCoolingDown || isRecommendationRunning}
               >
                 {recommendationButtonLabel}
               </Button>
@@ -493,18 +527,15 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
               <>
                 <section className="rounded-[26px] border border-campus-200 bg-white">
                   <div className="border-b border-campus-100 px-5 py-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
                       <div>
                         <h3 className="text-base font-semibold text-campus-900">추천된 Todo</h3>
                         <p className="mt-1 text-sm leading-6 text-campus-500">
                           항목을 모두 확인한 뒤 완료 버튼을 누르면 실제 업무 목록에 반영됩니다.
                         </p>
                       </div>
-                      <div className="inline-flex rounded-full bg-campus-50 px-3 py-1 text-xs font-medium text-campus-700 ring-1 ring-inset ring-campus-200">
-                        체크만으로는 적용되지 않음
-                      </div>
-                    </div>
                   </div>
+                </div>
 
                   <div className="space-y-3 px-4 py-4">
                     {recommendation.items.map((item, index) => {
@@ -603,7 +634,28 @@ export function TodayRecommendationCard({ userId }: TodayRecommendationCardProps
               </>
             )}
 
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <div className="hidden">
+                  <p className="text-sm font-medium text-campus-900">추천 결과를 다시 새로 받아볼 수 있어요.</p>
+                  <p className="text-xs text-campus-500">{retryRecommendationHelperText}</p>
+                </div>
+                <Button asChild type="button" variant="ghost">
+                  <Link to="/teams">업무 화면으로 이동</Link>
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void requestRecommendation()}
+                  disabled={!userId || isCoolingDown || isRecommendationRunning}
+                  className="min-w-[132px]"
+                >
+                  {isRecommendationRunning ? '다시 추천받는 중...' : '다시 추천받기'}
+                </Button>
+              </div>
+              <p className="text-xs text-campus-500">{retryRecommendationHelperText}</p>
+            </div>
+
+            <div className="hidden">
               <Button asChild type="button" variant="ghost">
                 <Link to="/teams">업무 화면으로 이동</Link>
               </Button>
