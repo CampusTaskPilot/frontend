@@ -272,7 +272,7 @@ export function ProfileEditPage() {
     if (!file) return
 
     if (!PROFILE_IMAGE_STORAGE_ENABLED) {
-      setImageErrorMessage('현재 프로필 이미지 업로드를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+      setImageErrorMessage('현재 이미지 업로드를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.')
       event.target.value = ''
       return
     }
@@ -309,14 +309,6 @@ export function ProfileEditPage() {
     setImagePreviewUrl('')
     setImageErrorMessage('')
     updateForm('profile_image_url', '')
-  }
-  const handleProfileImageUrlChange = (value: string) => {
-    if (imagePreviewUrl.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl)
-    setSelectedImageFile(null)
-    setShouldRemoveImage(false)
-    setImagePreviewUrl(value)
-    setImageErrorMessage('')
-    updateForm('profile_image_url', value)
   }
 
   const handleSaveProfile = async () => {
@@ -412,8 +404,8 @@ export function ProfileEditPage() {
       <section className="page-shell">
         <Card className="page-hero space-y-4 bg-[radial-gradient(circle_at_top_left,rgba(77,125,255,0.18),transparent_38%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))]">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600">Profile Setup</p>
-          <h1 className="font-display text-3xl text-campus-900">지원자 평가용 프로필 편집</h1>
-          <p className="max-w-3xl text-sm leading-7 text-campus-700">역할 적합도, 협업 방식, 실제 프로젝트 기여가 드러나는 정보부터 채워 주세요.</p>
+          <h1 className="font-display text-3xl text-campus-900">내 프로필 편집</h1>
+          <p className="max-w-3xl text-sm leading-7 text-campus-700">역할, 협업 방식, 프로젝트 경험을 보기 좋게 정리해 주세요.</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="ghost" type="button" onClick={() => { clearDraft(); navigate(`/profile/${userId}`) }}>취소</Button>
             <Button type="button" onMouseDown={ime.preventBlurOnMouseDown} onClick={() => void ime.runImeSafeAction(handleSaveProfile)} disabled={isSaving}>{isSaving ? '저장 중…' : '저장하기'}</Button>
@@ -422,18 +414,21 @@ export function ProfileEditPage() {
 
         <div className="grid gap-6 2xl:grid-cols-[360px,minmax(0,1fr)]">
           <Card className="space-y-5">
-            <h2 className="font-display text-2xl text-campus-900">프로필 이미지</h2>
-            <div className="flex flex-col gap-4">
+            <div className="space-y-1">
+              <h2 className="font-display text-2xl text-campus-900">프로필 이미지</h2>
+              <p className="text-sm text-campus-500">대표 이미지는 프로필과 팀 활동 화면에 표시됩니다.</p>
+            </div>
+            <div className="flex flex-col items-center gap-5">
               <ProfileAvatar
                 src={displayPreview}
                 name={form.full_name}
                 email={form.email}
                 alt="Profile image preview"
-                className="h-32 w-32 rounded-[2rem]"
+                className="h-36 w-36 rounded-[2rem] shadow-sm ring-1 ring-campus-200"
                 fallbackClassName="text-4xl"
               />
-              <div className="flex flex-wrap gap-2">
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-campus-200 bg-white px-5 py-2.5 text-sm font-medium text-campus-700 transition-colors hover:bg-brand-50">
+              <div className="w-full space-y-3">
+                <label className="inline-flex min-h-[3rem] w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-campus-200 bg-white px-5 py-2.5 text-sm font-medium text-campus-700 transition-colors hover:bg-brand-50">
                   <ImagePlus size={16} aria-hidden="true" />
                   이미지 선택
                   <input
@@ -444,36 +439,31 @@ export function ProfileEditPage() {
                     disabled={!PROFILE_IMAGE_STORAGE_ENABLED || isSaving}
                   />
                 </label>
-                <Button variant="ghost" type="button" onClick={handleResetImage} disabled={isSaving} className="gap-2">
-                  <RotateCcw size={16} aria-hidden="true" />
-                  미리보기 초기화
-                </Button>
-                <Button variant="ghost" type="button" onClick={handleRemoveImage} disabled={isSaving} className="gap-2">
-                  <X size={16} aria-hidden="true" />
-                  이미지 제거
-                </Button>
+                <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
+                  <Button variant="ghost" type="button" onClick={handleResetImage} disabled={isSaving} className="w-full gap-2">
+                    <RotateCcw size={16} aria-hidden="true" />
+                    미리보기 초기화
+                  </Button>
+                  <Button variant="ghost" type="button" onClick={handleRemoveImage} disabled={isSaving} className="w-full gap-2">
+                    <X size={16} aria-hidden="true" />
+                    이미지 제거
+                  </Button>
+                </div>
               </div>
-              {selectedImageFile ? (
-                <p className="break-all text-xs text-campus-500">선택한 파일: {selectedImageFile.name}</p>
-              ) : null}
-              <p className={imageErrorMessage ? 'text-xs text-rose-600' : 'text-xs text-campus-500'}>
-                {imageErrorMessage || `JPG, PNG, WEBP 이미지를 ${imageSizeLimitLabel} 이하로 업로드할 수 있습니다. 저장 시 Supabase Storage에 업로드됩니다.`}
-              </p>
-              {isSaving && selectedImageFile ? (
-                <p className="inline-flex items-center gap-2 text-xs font-medium text-brand-700">
-                  <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
-                  이미지 업로드 및 프로필 저장 중
+              <div className="w-full space-y-2 border-t border-campus-100 pt-4">
+                {selectedImageFile ? (
+                  <p className="break-all text-xs text-campus-500">선택한 파일: {selectedImageFile.name}</p>
+                ) : null}
+                <p className={imageErrorMessage ? 'text-xs text-rose-600' : 'text-xs text-campus-500'}>
+                  {imageErrorMessage || `프로필 사진은 ${imageSizeLimitLabel} 이하의 선명한 이미지를 권장합니다.`}
                 </p>
-              ) : null}
-              <InputField
-                label="프로필 이미지 URL"
-                name="profile_image_url"
-                type="url"
-                value={form.profile_image_url}
-                onChange={(event) => handleProfileImageUrlChange(event.target.value)}
-                placeholder="https://example.com/profile.jpg"
-                {...imeInputProps}
-              />
+                {isSaving && selectedImageFile ? (
+                  <p className="inline-flex items-center gap-2 text-xs font-medium text-brand-700">
+                    <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+                    이미지 업로드 및 프로필 저장 중
+                  </p>
+                ) : null}
+              </div>
             </div>
           </Card>
 
@@ -540,7 +530,7 @@ export function ProfileEditPage() {
             <div><h2 className="font-display text-2xl text-campus-900">프로젝트 경험</h2><p className="mt-2 text-sm text-campus-600">프로젝트명보다 실제 역할과 기여가 보이도록 적어 주세요.</p></div>
             <Button type="button" variant="ghost" onClick={handleAddProject} className="gap-2"><Plus size={16} aria-hidden="true" />프로젝트 추가</Button>
           </div>
-          {projects.length === 0 ? <div className="rounded-[1.6rem] border border-dashed border-campus-200 bg-campus-50/70 px-5 py-10"><h3 className="text-lg font-semibold text-campus-900">등록된 프로젝트가 없습니다.</h3><p className="mt-2 text-sm leading-6 text-campus-500">최소 1개 이상의 프로젝트를 입력하면 리더가 실제 수행 경험을 훨씬 빠르게 판단할 수 있습니다.</p></div> : (
+          {projects.length === 0 ? <div className="rounded-[1.6rem] border border-dashed border-campus-200 bg-campus-50/70 px-5 py-10"><h3 className="text-lg font-semibold text-campus-900">등록된 프로젝트가 없습니다.</h3><p className="mt-2 text-sm leading-6 text-campus-500">참여한 프로젝트를 추가하면 역할과 기여를 더 잘 보여줄 수 있습니다.</p></div> : (
             <div className="space-y-5">
               {projects.map((project, index) => (
                 <div key={project.id} className="rounded-[1.7rem] border border-campus-200/80 bg-campus-50/70 p-5">
@@ -558,8 +548,8 @@ export function ProfileEditPage() {
                     </div>
                     <TextareaField label="짧은 설명" name={`project-summary-${project.id}`} value={project.summary} onChange={(event) => updateProject(project.id, 'summary', event.target.value)} placeholder="프로젝트 목적과 결과를 2~4문장으로 정리해 주세요." className="md:col-span-2" rows={4} />
                     <InputField label="맡은 역할" name={`project-role-${project.id}`} value={project.role} onChange={(event) => updateProject(project.id, 'role', event.target.value)} placeholder="예: Frontend Developer, PM" {...imeInputProps} />
-                    <InputField label="사용 기술" name={`project-tech-${project.id}`} value={project.tech_stack} onChange={(event) => updateProject(project.id, 'tech_stack', event.target.value)} placeholder="예: React, FastAPI, Supabase" hint="쉼표로 구분하면 태그처럼 표시됩니다." {...imeInputProps} />
-                    <TextareaField label="주요 기여 내용" name={`project-contribution-${project.id}`} value={project.contribution_summary} onChange={(event) => updateProject(project.id, 'contribution_summary', event.target.value)} placeholder="예: 팀 온보딩 플로우 설계, 검색 UX 개선, API 연동 구조 정리" className="md:col-span-2" rows={4} />
+                    <InputField label="사용 기술" name={`project-tech-${project.id}`} value={project.tech_stack} onChange={(event) => updateProject(project.id, 'tech_stack', event.target.value)} placeholder="예: React, TypeScript, Figma" hint="쉼표로 구분하면 태그처럼 표시됩니다." {...imeInputProps} />
+                    <TextareaField label="주요 기여 내용" name={`project-contribution-${project.id}`} value={project.contribution_summary} onChange={(event) => updateProject(project.id, 'contribution_summary', event.target.value)} placeholder="예: 팀 온보딩 플로우 설계, 검색 UX 개선, 데이터 연동 흐름 정리" className="md:col-span-2" rows={4} />
                     <InputField label="시작일" name={`project-start-${project.id}`} type="date" value={project.start_date} onChange={(event) => updateProject(project.id, 'start_date', event.target.value)} />
                     <InputField label="종료일" name={`project-end-${project.id}`} type="date" value={project.end_date} onChange={(event) => updateProject(project.id, 'end_date', event.target.value)} disabled={project.is_ongoing} />
                     <div className="md:col-span-2"><label className="inline-flex items-center gap-3 rounded-full border border-campus-200 bg-white px-4 py-2.5 text-sm font-medium text-campus-700"><input type="checkbox" checked={project.is_ongoing} onChange={(event) => updateProject(project.id, 'is_ongoing', event.target.checked)} className="h-4 w-4 rounded border-campus-300 text-brand-600 focus:ring-brand-300" />현재 진행 중인 프로젝트입니다.</label></div>
@@ -582,7 +572,7 @@ export function ProfileEditPage() {
         </Card>
 
         <Card className="space-y-4 border-rose-200 bg-rose-50">
-          <div className="space-y-2"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">주의</p><h2 className="font-display text-2xl text-campus-900">회원 탈퇴</h2><p className="text-sm leading-relaxed text-campus-600">회원 탈퇴는 되돌릴 수 없으며, 현재 프로젝트에서는 관리자 API 연동이 필요합니다.</p></div>
+          <div className="space-y-2"><p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">주의</p><h2 className="font-display text-2xl text-campus-900">회원 탈퇴</h2><p className="text-sm leading-relaxed text-campus-600">탈퇴 후에는 프로필과 활동 정보가 더 이상 표시되지 않습니다. 계속하려면 본인 확인이 필요합니다.</p></div>
           <div className="flex justify-end">
             <button type="button" onClick={() => { setDeleteErrorMessage(''); setIsDeleteModalOpen(true) }} className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-rose-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300">회원 탈퇴</button>
           </div>

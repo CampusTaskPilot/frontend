@@ -319,6 +319,6 @@ export async function saveProfilePageData(params: {
 
 export async function requestAccountDeletion() {
   throw new Error(
-    '현재 프로젝트 구조에서는 브라우저에서 auth.users 삭제를 직접 수행할 수 없습니다. 추후 서버 또는 관리자 API 연동이 필요합니다.',
+    '현재 계정 삭제를 처리할 수 없습니다. 잠시 후 다시 시도하거나 운영자에게 문의해 주세요.',
   )
 }

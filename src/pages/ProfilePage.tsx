@@ -9,7 +9,7 @@ export function ProfilePage() {
     return (
       <section className="page-shell">
         <Card>
-          <p className="text-sm text-campus-600">계정 정보를 확인하는 중입니다...</p>
+          <p className="text-sm text-campus-600">내 프로필로 이동하는 중입니다.</p>
         </Card>
       </section>
     )

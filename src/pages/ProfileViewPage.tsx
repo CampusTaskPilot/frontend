@@ -293,33 +293,33 @@ export function ProfileViewPage() {
     {
       title: '프로젝트 경험',
       value: `${projectCount}건`,
-      description: projectCount > 0 ? '실제 경험이 등록되어 있습니다.' : '프로젝트 경험이 아직 없습니다.',
+      description: projectCount > 0 ? '참여한 프로젝트를 확인할 수 있습니다.' : '프로젝트를 준비 중입니다.',
       icon: FolderKanban,
     },
     {
       title: '보유 스킬',
       value: `${skillItems.length}개`,
       description:
-        strongSkillCount > 0 ? `강점 스킬 ${strongSkillCount}개 포함` : '강점 스킬 정보가 아직 없습니다.',
+        strongSkillCount > 0 ? `대표 강점 ${strongSkillCount}개 포함` : '스킬 정보를 준비 중입니다.',
       icon: Sparkles,
     },
     {
       title: '희망 역할',
-      value: profile?.desired_role?.trim() || '미등록',
-      description: profile?.current_status?.trim() || '현재 상태 정보가 아직 없습니다.',
+      value: profile?.desired_role?.trim() || '준비 중',
+      description: profile?.current_status?.trim() || '현재 상태를 준비 중입니다.',
       icon: BriefcaseBusiness,
     },
     {
       title: '팀 협업 경험',
-      value: teamProjectCount > 0 ? `${teamProjectCount}건` : '미등록',
+      value: teamProjectCount > 0 ? `${teamProjectCount}건` : '준비 중',
       description:
-        teamProjectCount > 0 ? '팀 프로젝트 기반 협업 경험이 있습니다.' : '팀 프로젝트 경험이 아직 없습니다.',
+        teamProjectCount > 0 ? '팀으로 진행한 프로젝트가 있습니다.' : '팀 프로젝트를 준비 중입니다.',
       icon: Users,
     },
     {
-      title: '외부 검증 링크',
+      title: '외부 링크',
       value: `${linkCount}개`,
-      description: linkCount > 0 ? '외부 활동과 결과물을 확인할 수 있습니다.' : '등록된 링크가 없습니다.',
+      description: linkCount > 0 ? '외부 활동과 결과물을 볼 수 있습니다.' : '링크를 준비 중입니다.',
       icon: ExternalLink,
     },
     {
@@ -330,19 +330,19 @@ export function ProfileViewPage() {
     },
   ]
 
-  const leaderSignals = [
+  const profileHighlights = [
     profile?.desired_role?.trim()
-      ? `희망 역할은 ${profile.desired_role}이며, 현재 입력 기준으로 역할 의도가 명확합니다.`
-      : '희망 역할이 아직 등록되지 않아 역할 적합도 판단에는 추가 정보가 필요합니다.',
+      ? `${profile.desired_role} 역할에 관심이 있습니다.`
+      : '관심 있는 역할을 준비 중입니다.',
     projectCount > 0
-      ? `프로젝트 경험 ${projectCount}건이 등록되어 있고, 이 중 팀 프로젝트는 ${teamProjectCount}건입니다.`
-      : '프로젝트 경험이 아직 등록되지 않아 실제 수행 이력 판단은 어렵습니다.',
+      ? `총 ${projectCount}건의 프로젝트가 등록되어 있고, 팀 프로젝트는 ${teamProjectCount}건입니다.`
+      : '프로젝트 이력을 준비 중입니다.',
     strongSkillCount > 0
-      ? `고급 수준으로 표시한 핵심 스킬이 ${strongSkillCount}개 있어 강점 영역 파악이 가능합니다.`
-      : '숙련도가 높은 스킬 신호는 아직 제한적입니다.',
+      ? `강점으로 등록한 스킬이 ${strongSkillCount}개 있습니다.`
+      : '대표 강점 스킬을 준비 중입니다.',
     linkCount > 0
-      ? `외부 링크 ${linkCount}개가 등록되어 있어 결과물 검증이 가능합니다.`
-      : '외부 링크가 없어 GitHub나 포트폴리오 기반 검증 포인트가 부족합니다.',
+      ? `GitHub, 블로그, 포트폴리오 등 외부 링크 ${linkCount}개를 확인할 수 있습니다.`
+      : '외부 링크를 준비 중입니다.',
   ]
 
   if (isLoading) {
@@ -402,7 +402,7 @@ export function ProfileViewPage() {
             <div className="space-y-2">
               <h2 className="font-display text-2xl text-campus-900">소개와 협업 스타일</h2>
               <p className="text-sm text-campus-600">
-                리더가 지원자의 성향과 일하는 방식을 빠르게 파악할 수 있는 영역입니다.
+                함께 일할 때의 관심사, 방식, 가능 시간을 정리한 영역입니다.
               </p>
             </div>
 
@@ -410,31 +410,31 @@ export function ProfileViewPage() {
               <ExpandableTextBlock
                 title="자기소개"
                 content={profile?.bio}
-                emptyMessage="자기소개가 아직 등록되지 않았습니다."
+                emptyMessage="자기소개를 준비 중입니다."
               />
               <ExpandableTextBlock
                 title="협업 스타일"
                 content={profile?.collaboration_style}
-                emptyMessage="협업 스타일이 아직 등록되지 않았습니다."
+                emptyMessage="협업 스타일을 준비 중입니다."
               />
               <ExpandableTextBlock
                 title="일하는 방식"
                 content={profile?.working_style}
-                emptyMessage="일하는 방식이 아직 등록되지 않았습니다."
+                emptyMessage="일하는 방식을 준비 중입니다."
               />
               <TagGroup
                 title="관심 분야"
                 values={interestAreas}
-                emptyMessage="관심 분야가 아직 등록되지 않았습니다."
+                emptyMessage="관심 분야를 준비 중입니다."
               />
               <TagGroup
                 title="선호 프로젝트"
                 values={preferredProjectTypes}
-                emptyMessage="선호 프로젝트 유형이 아직 등록되지 않았습니다."
+                emptyMessage="선호 프로젝트 유형을 준비 중입니다."
               />
               <ProfileDetailPanel title="활동 가능 정보">
                 <p className="break-words text-sm leading-7 text-campus-500">
-                  {profile?.availability?.trim() || '참여 가능 시간 또는 활동 가능 정보가 아직 없습니다.'}
+                  {profile?.availability?.trim() || '참여 가능 시간과 활동 정보를 준비 중입니다.'}
                 </p>
               </ProfileDetailPanel>
             </div>
@@ -444,18 +444,18 @@ export function ProfileViewPage() {
             <div className="space-y-2">
               <h2 className="font-display text-2xl text-campus-900">기술과 역량</h2>
               <p className="text-sm text-campus-600">
-                단순 태그 나열이 아니라, 카테고리와 강점 중심으로 스킬을 읽을 수 있게 정리했습니다.
+                등록한 스킬을 카테고리와 숙련도 기준으로 확인할 수 있습니다.
               </p>
             </div>
 
-            <SkillList items={skillItems} emptyMessage="등록된 스킬이 없습니다." />
+            <SkillList items={skillItems} emptyMessage="아직 등록된 스킬이 없습니다." />
           </Card>
 
           <Card className="space-y-5">
             <div className="space-y-2">
               <h2 className="font-display text-2xl text-campus-900">프로젝트 경험</h2>
               <p className="text-sm text-campus-600">
-                실제로 어떤 프로젝트에서 어떤 역할과 기여를 했는지 중심으로 확인할 수 있습니다.
+                참여한 프로젝트의 역할, 사용 기술, 주요 기여를 확인할 수 있습니다.
               </p>
             </div>
 
@@ -466,12 +466,12 @@ export function ProfileViewPage() {
         <aside className="space-y-6">
           <Card className="space-y-4">
             <div className="space-y-2">
-              <h2 className="font-display text-xl text-campus-900">빠른 판단 포인트</h2>
-              <p className="text-sm text-campus-600">리더가 몇 초 안에 읽을 수 있는 핵심 신호입니다.</p>
+              <h2 className="font-display text-xl text-campus-900">프로필 하이라이트</h2>
+              <p className="text-sm text-campus-600">프로필의 주요 정보를 빠르게 모아 봅니다.</p>
             </div>
 
             <div className="space-y-3">
-              {leaderSignals.map((signal) => (
+              {profileHighlights.map((signal) => (
                 <div
                   key={signal}
                   className="rounded-[1.15rem] border border-campus-200/80 bg-campus-50/70 px-4 py-3"
@@ -484,8 +484,8 @@ export function ProfileViewPage() {
 
           <Card className="space-y-4">
             <div className="space-y-2">
-              <h2 className="font-display text-xl text-campus-900">보조 판단 정보</h2>
-              <p className="text-sm text-campus-600">프로필 신뢰도와 최신성을 빠르게 체크할 수 있습니다.</p>
+              <h2 className="font-display text-xl text-campus-900">활동 정보</h2>
+              <p className="text-sm text-campus-600">프로필 작성 상태와 최근 업데이트를 확인합니다.</p>
             </div>
 
             <div className="space-y-3 text-sm text-campus-700">
@@ -511,14 +511,14 @@ export function ProfileViewPage() {
               <div className="rounded-[1.15rem] bg-campus-50/70 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <span>등록 링크 여부</span>
-                  <span className="font-medium text-campus-900">{linkCount > 0 ? '있음' : '없음'}</span>
+                  <span className="font-medium text-campus-900">{linkCount > 0 ? '등록됨' : '준비 중'}</span>
                 </div>
               </div>
               <div className="rounded-[1.15rem] bg-campus-50/70 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <span>팀 협업 경험</span>
                   <span className="font-medium text-campus-900">
-                    {teamProjectCount > 0 ? `${teamProjectCount}건` : '미등록'}
+                    {teamProjectCount > 0 ? `${teamProjectCount}건` : '준비 중'}
                   </span>
                 </div>
               </div>

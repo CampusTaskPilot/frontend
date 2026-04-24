@@ -85,8 +85,8 @@ export function validateProfileImageFile(file: File) {
     allowedExtensions: DEFAULT_ALLOWED_IMAGE_EXTENSIONS,
     allowedMimeTypes: DEFAULT_ALLOWED_IMAGE_MIME_TYPES,
     maxSizeBytes: PROFILE_IMAGE_MAX_SIZE_BYTES,
-    invalidTypeMessage: 'JPG, PNG, WEBP 형식의 이미지만 업로드할 수 있습니다.',
-    tooLargeMessage: '프로필 이미지는 5MB 이하로 업로드해 주세요.',
+    invalidTypeMessage: '지원되는 이미지 파일만 업로드할 수 있습니다.',
+    tooLargeMessage: '프로필 사진은 5MB 이하로 업로드해 주세요.',
   })
 }
 

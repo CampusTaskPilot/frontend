@@ -32,8 +32,7 @@ function DeleteAccountModalBody({
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-500">주의</p>
           <h2 className="font-display text-2xl text-campus-900">정말로 계정을 삭제하시겠어요?</h2>
           <p className="text-sm leading-relaxed text-campus-600">
-            계정을 삭제하면 프로필 정보와 연결된 일부 기록이 복구되지 않을 수 있습니다. 중요한 데이터가 있다면
-            먼저 확인해주세요.
+            삭제 후에는 프로필과 활동 정보가 더 이상 표시되지 않습니다. 진행 전 필요한 정보를 먼저 확인해 주세요.
           </p>
         </div>
 

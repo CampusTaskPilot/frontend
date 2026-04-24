@@ -45,9 +45,9 @@ export function ProfileProjectSection({ projects }: ProfileProjectSectionProps) 
   if (projects.length === 0) {
     return (
       <div className="rounded-[1.6rem] border border-dashed border-campus-200 bg-campus-50/70 px-5 py-10">
-        <h3 className="text-lg font-semibold text-campus-900">프로젝트 경험이 아직 없습니다.</h3>
+        <h3 className="text-lg font-semibold text-campus-900">아직 등록된 프로젝트가 없습니다.</h3>
         <p className="mt-2 text-sm leading-6 text-campus-500">
-          팀 리더가 역할 적합도와 실제 기여를 판단하기 쉽도록 주요 프로젝트를 추가해 주세요.
+          참여한 프로젝트를 추가하면 역할, 사용 기술, 주요 기여를 한눈에 보여줄 수 있습니다.
         </p>
       </div>
     )
@@ -77,7 +77,7 @@ export function ProfileProjectSection({ projects }: ProfileProjectSectionProps) 
                 <div className="space-y-2">
                   <h3 className="text-xl font-semibold text-campus-900">{project.name}</h3>
                   <p className="break-words text-sm leading-7 text-campus-700">
-                    {project.summary?.trim() || '프로젝트 설명이 아직 등록되지 않았습니다.'}
+                    {project.summary?.trim() || '프로젝트 소개를 준비 중입니다.'}
                   </p>
                 </div>
               </div>
@@ -115,7 +115,7 @@ export function ProfileProjectSection({ projects }: ProfileProjectSectionProps) 
                   </ul>
                 ) : (
                   <p className="mt-3 text-sm leading-6 text-campus-500">
-                    구체적인 기여 내용이 아직 등록되지 않았습니다.
+                    주요 기여 내용을 준비 중입니다.
                   </p>
                 )}
               </section>
@@ -128,7 +128,7 @@ export function ProfileProjectSection({ projects }: ProfileProjectSectionProps) 
                   {techStack.length > 0 ? (
                     techStack.map((tech) => <Badge key={`${project.id}-${tech}`}>{tech}</Badge>)
                   ) : (
-                    <p className="text-sm text-campus-500">기술 스택 정보가 아직 없습니다.</p>
+                    <p className="text-sm text-campus-500">사용 기술을 준비 중입니다.</p>
                   )}
                 </div>
               </section>

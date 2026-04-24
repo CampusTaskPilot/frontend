@@ -36,7 +36,7 @@ export function ProfileHeader({
 }: ProfileHeaderProps) {
   const displayName = profile?.full_name?.trim() || fallbackName || '사용자'
   const displayEmail = profile?.email || fallbackEmail || '이메일 정보 없음'
-  const headline = profile?.headline?.trim() || profile?.bio?.trim() || '한 줄 소개가 아직 등록되지 않았습니다.'
+  const headline = profile?.headline?.trim() || profile?.bio?.trim() || '소개 문구를 준비 중입니다.'
   const identityLine = buildIdentityLine(profile)
 
   return (
@@ -57,7 +57,7 @@ export function ProfileHeader({
               <div className="min-w-0 space-y-3">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600">
-                    Candidate Profile
+                    Member Profile
                   </p>
                   <div className="space-y-1">
                     <h1 className="text-balance break-words font-display text-3xl text-campus-900 sm:text-4xl">
@@ -75,7 +75,7 @@ export function ProfileHeader({
                       희망 역할 · {profile.desired_role}
                     </Badge>
                   ) : (
-                    <Badge>희망 역할 미등록</Badge>
+                    <Badge>희망 역할 준비 중</Badge>
                   )}
                   {profile?.current_status?.trim() ? <Badge>{profile.current_status}</Badge> : null}
                   {profile?.location?.trim() ? <Badge>{profile.location}</Badge> : null}
@@ -96,9 +96,9 @@ export function ProfileHeader({
             <div className="min-w-0 rounded-[1.4rem] border border-white/70 bg-white/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-campus-500">기본 정보</p>
               <div className="mt-3 space-y-2 text-sm text-campus-700">
-                <p className="break-words">{identityLine || '학교 및 전공 정보가 아직 없습니다.'}</p>
+                <p className="break-words">{identityLine || '학교와 전공 정보를 준비 중입니다.'}</p>
                 <p className="break-words">
-                  {profile?.bio?.trim() || '자기소개가 아직 작성되지 않았습니다.'}
+                  {profile?.bio?.trim() || '자기소개를 준비 중입니다.'}
                 </p>
               </div>
             </div>
@@ -109,7 +109,7 @@ export function ProfileHeader({
                 {topSkills.length > 0 ? (
                   topSkills.map((skill) => <Badge key={skill}>{skill}</Badge>)
                 ) : (
-                  <p className="text-sm text-campus-500">아직 등록된 핵심 스택이 없습니다.</p>
+                  <p className="text-sm text-campus-500">대표 스킬을 준비 중입니다.</p>
                 )}
               </div>
             </div>
@@ -118,10 +118,8 @@ export function ProfileHeader({
 
         <aside className="flex flex-col gap-4 rounded-[1.6rem] border border-white/75 bg-white/84 p-5">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-campus-500">검증 링크</p>
-            <p className="text-sm text-campus-600">
-              외부 활동과 결과물을 빠르게 확인할 수 있는 링크입니다.
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-campus-500">외부 링크</p>
+            <p className="text-sm text-campus-600">GitHub, 블로그, 포트폴리오를 모아 보여줍니다.</p>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -135,7 +133,7 @@ export function ProfileHeader({
               ))
             ) : (
               <div className="rounded-[1.25rem] border border-dashed border-campus-200 bg-campus-50/80 px-4 py-6 text-sm text-campus-500">
-                등록된 외부 링크가 없습니다.
+                아직 등록된 링크가 없습니다.
               </div>
             )}
           </div>
