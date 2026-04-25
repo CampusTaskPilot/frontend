@@ -7,6 +7,7 @@ import { Card } from '../components/ui/Card'
 import { InputField } from '../components/ui/InputField'
 import { TextareaField } from '../components/ui/TextareaField'
 import { useImeSafeSubmit } from '../hooks/useImeSafeSubmit'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../features/auth/context/useAuth'
 import { DeleteAccountModal } from '../features/profile/components/DeleteAccountModal'
 import { ProfileAvatar } from '../features/profile/components/ProfileAvatar'
@@ -17,6 +18,7 @@ import {
 } from '../features/profile/lib/profileImages'
 import {
   fetchProfilePageData,
+  removeCurrentProfileImage,
   requestAccountDeletion,
   saveProfilePageData,
 } from '../features/profile/lib/profile'
@@ -106,6 +108,7 @@ export function ProfileEditPage() {
   const [shouldRemoveImage, setShouldRemoveImage] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isRemovingImage, setIsRemovingImage] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -301,14 +304,41 @@ export function ProfileEditPage() {
     setImagePreviewUrl(form.profile_image_url)
     setImageErrorMessage('')
   }
-  const handleRemoveImage = () => {
+  const handleRemoveImage = async () => {
     if (imagePreviewUrl.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl)
-    markDirty()
     setSelectedImageFile(null)
-    setShouldRemoveImage(true)
     setImagePreviewUrl('')
     setImageErrorMessage('')
-    updateForm('profile_image_url', '')
+
+    const hasSavedImage = Boolean(savedProfileImageUrlRef.current)
+    if (!hasSavedImage) {
+      setShouldRemoveImage(false)
+      setForm((prev) => ({ ...prev, profile_image_url: '' }))
+      return
+    }
+
+    if (!user || !userId || user.id !== userId) {
+      setShouldRemoveImage(true)
+      markDirty()
+      setForm((prev) => ({ ...prev, profile_image_url: '' }))
+      return
+    }
+
+    setIsRemovingImage(true)
+    try {
+      const updatedProfile = await removeCurrentProfileImage({
+        userId,
+        currentProfileImageUrl: savedProfileImageUrlRef.current,
+      })
+      savedProfileImageUrlRef.current = updatedProfile?.profile_image_url ?? ''
+      setShouldRemoveImage(false)
+      setForm((prev) => ({ ...prev, profile_image_url: updatedProfile?.profile_image_url ?? '' }))
+    } catch (error) {
+      setImagePreviewUrl(savedProfileImageUrlRef.current)
+      setImageErrorMessage(error instanceof Error ? error.message : '프로필 이미지를 제거하지 못했습니다.')
+    } finally {
+      setIsRemovingImage(false)
+    }
   }
 
   const handleSaveProfile = async () => {
@@ -361,7 +391,11 @@ export function ProfileEditPage() {
     setDeleteErrorMessage('')
     try {
       await requestAccountDeletion()
-      await signOut()
+      try {
+        await signOut()
+      } catch {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+      }
       navigate('/', { replace: true })
     } catch (error) {
       setDeleteErrorMessage(error instanceof Error ? error.message : '회원 탈퇴 처리 중 오류가 발생했습니다.')
@@ -436,15 +470,15 @@ export function ProfileEditPage() {
                     accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
                     className="hidden"
                     onChange={handleImageChange}
-                    disabled={!PROFILE_IMAGE_STORAGE_ENABLED || isSaving}
+                    disabled={!PROFILE_IMAGE_STORAGE_ENABLED || isSaving || isRemovingImage}
                   />
                 </label>
                 <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1">
-                  <Button variant="ghost" type="button" onClick={handleResetImage} disabled={isSaving} className="w-full gap-2">
+                  <Button variant="ghost" type="button" onClick={handleResetImage} disabled={isSaving || isRemovingImage} className="w-full gap-2">
                     <RotateCcw size={16} aria-hidden="true" />
                     미리보기 초기화
                   </Button>
-                  <Button variant="ghost" type="button" onClick={handleRemoveImage} disabled={isSaving} className="w-full gap-2">
+                  <Button variant="ghost" type="button" onClick={() => void handleRemoveImage()} disabled={isSaving || isRemovingImage} className="w-full gap-2">
                     <X size={16} aria-hidden="true" />
                     이미지 제거
                   </Button>

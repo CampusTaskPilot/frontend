@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase'
+import { apiFetch } from '../../../lib/api'
 import {
   PROFILE_IMAGE_BUCKET,
   extractProfileImageReference,
@@ -317,8 +318,60 @@ export async function saveProfilePageData(params: {
   }
 }
 
+export async function removeCurrentProfileImage(params: {
+  userId: string
+  currentProfileImageUrl: string | null | undefined
+}) {
+  const { currentProfileImageUrl } = params
+
+  const { data, error } = await supabase.auth.getSession()
+  if (error) {
+    throw error
+  }
+
+  const accessToken = data.session?.access_token?.trim()
+  if (!accessToken) {
+    throw new Error('로그인이 필요합니다.')
+  }
+
+  const result = await apiFetch<{
+    accepted: boolean
+    profile_image_url: string | null
+    storage_deleted: boolean
+    message: string
+  }>('/profile/image', {
+    method: 'DELETE',
+    accessToken,
+    body: JSON.stringify({
+      current_profile_image_url: currentProfileImageUrl || null,
+    }),
+  })
+
+  return {
+    profile_image_url: result.profile_image_url,
+  } as ProfileRecord
+}
+
 export async function requestAccountDeletion() {
-  throw new Error(
-    '현재 계정 삭제를 처리할 수 없습니다. 잠시 후 다시 시도하거나 운영자에게 문의해 주세요.',
-  )
+  const { data, error } = await supabase.auth.getSession()
+
+  if (error) {
+    throw error
+  }
+
+  const accessToken = data.session?.access_token?.trim()
+  if (!accessToken) {
+    throw new Error('로그인이 필요합니다.')
+  }
+
+  return apiFetch<{
+    accepted: boolean
+    profile_deleted: boolean
+    auth_user_deleted: boolean
+    user_id: string
+    message: string
+  }>('/profile', {
+    method: 'DELETE',
+    accessToken,
+  })
 }
