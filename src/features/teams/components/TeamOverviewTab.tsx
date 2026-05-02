@@ -31,11 +31,12 @@ import {
 import { Badge as UiBadge } from '@/components/shadcn/badge'
 import { Button as UiButton } from '@/components/shadcn/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/shadcn/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/shadcn/dialog'
 import { Input } from '@/components/shadcn/input'
 import { Separator } from '@/components/shadcn/separator'
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/shadcn/sheet'
 import { Skeleton } from '@/components/shadcn/skeleton'
 import { Textarea } from '@/components/shadcn/textarea'
+import { SkillSelector } from '@/components/common/SkillSelector'
 import { cn } from '@/lib/utils'
 import { TeamProfileImage } from './TeamProfileImage'
 import { TEAM_IMAGE_MAX_SIZE_BYTES, TEAM_IMAGE_STORAGE_ENABLED, validateTeamImageFile } from '../lib/teamProfileImages'
@@ -44,9 +45,10 @@ import {
   splitTeamStoryDescription,
   type TeamStoryField,
 } from '../lib/teamStoryDescription'
-import { TEAM_SUMMARY_MAX_LENGTH, TEAM_SUMMARY_LENGTH_MESSAGE, updateTeamProfile } from '../lib/teams'
+import { TEAM_SUMMARY_MAX_LENGTH, TEAM_SUMMARY_LENGTH_MESSAGE, fetchSkillOptions, updateTeamProfile } from '../lib/teams'
 import type {
   ProfileSummary,
+  SkillOption,
   TeamMemberWithProfile,
   TeamRecord,
   TeamSkillTag,
@@ -89,6 +91,17 @@ const numberFormatter = new Intl.NumberFormat('ko-KR')
 
 function normalize(value: string | null | undefined) {
   return value?.trim() ?? ''
+}
+
+function normalizeSkillIds(values: number[]) {
+  return Array.from(new Set(values.filter((value) => Number.isFinite(value)))).sort((a, b) => a - b)
+}
+
+function areSameSkillIds(left: number[], right: number[]) {
+  const normalizedLeft = normalizeSkillIds(left)
+  const normalizedRight = normalizeSkillIds(right)
+
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((value, index) => value === normalizedRight[index])
 }
 
 function makeDraft(team: TeamRecord): EditDraft {
@@ -225,6 +238,12 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
   } = props
   const baseDraft = useMemo(() => makeDraft(team), [team])
   const [draft, setDraft] = useState<EditDraft>(() => baseDraft)
+  const [allSkillOptions, setAllSkillOptions] = useState<SkillOption[]>([])
+  const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>(() =>
+    normalizeSkillIds(skills.map((skill) => skill.id)),
+  )
+  const [isLoadingSkillOptions, setIsLoadingSkillOptions] = useState(false)
+  const [skillOptionsMessage, setSkillOptionsMessage] = useState('')
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
@@ -236,11 +255,43 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
 
   useEffect(() => {
     setDraft(baseDraft)
+    setSelectedSkillIds(normalizeSkillIds(skills.map((skill) => skill.id)))
     setSelectedImageFile(null)
     setPreviewImageUrl(null)
     setSaveError('')
     setSaveSuccess('')
-  }, [baseDraft])
+  }, [baseDraft, skills])
+
+  useEffect(() => {
+    if (!isEditorOpen || allSkillOptions.length > 0) return
+
+    let isMounted = true
+
+    async function loadSkillOptions() {
+      setIsLoadingSkillOptions(true)
+      setSkillOptionsMessage('')
+
+      try {
+        const options = await fetchSkillOptions()
+        if (!isMounted) return
+        setAllSkillOptions(options)
+      } catch {
+        if (!isMounted) return
+        setAllSkillOptions([])
+        setSkillOptionsMessage('기술 목록을 지금은 불러오지 못했어요. 기존 기술은 유지한 채 다시 저장할 수 있습니다.')
+      } finally {
+        if (isMounted) {
+          setIsLoadingSkillOptions(false)
+        }
+      }
+    }
+
+    void loadSkillOptions()
+
+    return () => {
+      isMounted = false
+    }
+  }, [allSkillOptions.length, isEditorOpen])
 
   useEffect(() => {
     if (!selectedImageFile) {
@@ -262,6 +313,21 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
 
   const leaderName = normalize(leader?.full_name) || normalize(leader?.email) || '팀 리더'
   const skillNames = useMemo(() => Array.from(new Set(skills.map((skill) => skill.name))).sort(), [skills])
+  const currentSkillIds = useMemo(() => normalizeSkillIds(skills.map((skill) => skill.id)), [skills])
+  const editorSkillOptions = useMemo(() => {
+    const optionById = new Map<number, SkillOption>()
+
+    allSkillOptions.forEach((skill) => {
+      optionById.set(skill.id, skill)
+    })
+    skills.forEach((skill) => {
+      if (!optionById.has(skill.id)) {
+        optionById.set(skill.id, { ...skill, category: null })
+      }
+    })
+
+    return Array.from(optionById.values()).sort((left, right) => left.name.localeCompare(right.name, 'ko-KR'))
+  }, [allSkillOptions, skills])
   const memberCount = members.length
   const occupancyLabel = `${numberFormatter.format(memberCount)}명 / 최대 ${numberFormatter.format(team.max_members)}명`
   const heroSummary = normalize(team.summary) || '팀의 목표와 작업 방향을 짧고 분명하게 소개해 주세요.'
@@ -290,6 +356,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
     draft.summary !== team.summary ||
     draft.description !== (team.description ?? '') ||
     draft.teamNote !== (team.team_note ?? '') ||
+    !areSameSkillIds(selectedSkillIds, currentSkillIds) ||
     draft.removeImage ||
     Boolean(selectedImageFile)
   const isDeleteConfirmed = deleteConfirmationName.trim() === team.name.trim()
@@ -320,10 +387,24 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
 
   const openEditor = () => {
     setDraft(baseDraft)
+    setSelectedSkillIds(currentSkillIds)
     setSelectedImageFile(null)
     setSaveError('')
     setSaveSuccess('')
     setIsEditorOpen(true)
+  }
+
+  const addSkill = (skillId: number) => {
+    setSelectedSkillIds((current) => {
+      if (current.includes(skillId)) return current
+      return normalizeSkillIds([...current, skillId])
+    })
+    setSaveError('')
+  }
+
+  const removeSkill = (skillId: number) => {
+    setSelectedSkillIds((current) => current.filter((id) => id !== skillId))
+    setSaveError('')
   }
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -372,6 +453,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
         imageFile: selectedImageFile,
         removeImage: draft.removeImage,
         currentImageUrl: team.image_url,
+        skillIds: selectedSkillIds,
       })
 
       setDraft(makeDraft(result.team))
@@ -592,16 +674,16 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
         </UiCard>
       </div>
 
-      <Sheet open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto bg-slate-50 sm:max-w-2xl">
-          <SheetHeader className="text-left">
-            <SheetTitle>팀 소개 편집</SheetTitle>
-            <SheetDescription className="break-keep leading-6">
-              팀 생성 폼과 같은 기준으로 기본 정보, 소개, 이미지를 다시 정리합니다.
-            </SheetDescription>
-          </SheetHeader>
+      <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+        <DialogContent className="max-w-6xl bg-slate-50 p-0">
+          <DialogHeader className="border-b border-slate-200/80 bg-white px-5 py-4 pr-14 text-left sm:px-6">
+            <DialogTitle>팀 소개 편집</DialogTitle>
+            <DialogDescription className="break-keep">
+              팀 생성 폼과 같은 기준으로 기본 정보, 기술, 소개, 이미지를 다시 정리합니다.
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="mt-2 flex flex-col gap-5 px-4 pb-2">
+          <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
             {saveError ? (
               <Alert variant="destructive" className="border-rose-200 bg-rose-50/95">
                 <AlertCircle aria-hidden="true" />
@@ -610,6 +692,7 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
               </Alert>
             ) : null}
 
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] xl:items-start">
             <UiCard className="rounded-[1.75rem] border-slate-200/80 bg-white shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
               <CardHeader className="gap-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -656,6 +739,44 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
                     짧아도 괜찮아요. {draft.summary.trim().length}/{TEAM_SUMMARY_MAX_LENGTH}자
                   </p>
                 </div>
+              </CardContent>
+            </UiCard>
+
+            <UiCard className="rounded-[1.75rem] border-slate-200/80 bg-white shadow-[0_24px_64px_-52px_rgba(15,23,42,0.36)]">
+              <CardHeader className="gap-1.5">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-xl font-semibold tracking-[-0.03em] text-slate-950">기술 스택</CardTitle>
+                  <UiBadge variant="outline" className="rounded-full px-2.5 text-[11px]">
+                    선택
+                  </UiBadge>
+                </div>
+                <CardDescription className="leading-5">
+                  팀에서 사용하는 기술이나 앞으로 필요한 역량을 추가해 주세요.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {skillOptionsMessage ? (
+                  <Alert className="border-amber-200 bg-amber-50/95 text-amber-900">
+                    <AlertCircle aria-hidden="true" />
+                    <AlertTitle>기술 목록을 불러오지 못했습니다</AlertTitle>
+                    <AlertDescription className="text-amber-800">{skillOptionsMessage}</AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {isLoadingSkillOptions && editorSkillOptions.length === 0 ? (
+                  <div className="rounded-[1.35rem] border border-slate-200/80 bg-slate-50/70 px-4 py-5 text-sm text-slate-500">
+                    기술 목록을 불러오는 중이에요...
+                  </div>
+                ) : (
+                  <SkillSelector
+                    skills={editorSkillOptions}
+                    selectedSkillIds={selectedSkillIds}
+                    onSelectSkill={addSkill}
+                    onDeselectSkill={removeSkill}
+                    showSelectedList
+                    emptySelectedMessage="아직 선택한 기술이 없습니다. 팀에서 주로 사용하는 도구나 기술을 추가해 주세요."
+                  />
+                )}
               </CardContent>
             </UiCard>
 
@@ -824,15 +945,17 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
                 </div>
               </CardContent>
             </UiCard>
+            </div>
           </div>
 
-          <SheetFooter className="mt-6 flex-col gap-2 px-4 sm:flex-row sm:justify-between">
+          <DialogFooter className="border-t border-slate-200/80 bg-white px-5 py-4 sm:justify-between sm:px-6">
             <UiButton
               type="button"
               variant="outline"
               className="rounded-2xl"
               onClick={() => {
                 setDraft(baseDraft)
+                setSelectedSkillIds(currentSkillIds)
                 setSelectedImageFile(null)
                 setSaveError('')
                 setSaveSuccess('')
@@ -845,9 +968,9 @@ export function TeamOverviewTab(props: TeamOverviewTabProps) {
               {isSaving ? <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" /> : null}
               저장하기
             </UiButton>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>

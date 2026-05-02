@@ -28,7 +28,9 @@ import type {
 
 export const TEAM_CREATION_LIMIT = 3
 export const TEAM_CREATION_LIMIT_MESSAGE = '팀은 최대 3개까지 생성할 수 있습니다.'
+export const TEAM_SUMMARY_MIN_LENGTH = 5
 export const TEAM_SUMMARY_MAX_LENGTH = 30
+export const TEAM_SUMMARY_MIN_LENGTH_MESSAGE = `한 줄 소개는 ${TEAM_SUMMARY_MIN_LENGTH}자 이상 입력해 주세요.`
 export const TEAM_SUMMARY_LENGTH_MESSAGE = `한 줄 소개는 ${TEAM_SUMMARY_MAX_LENGTH}자 이내로 입력해 주세요.`
 const teamsUpdatedEvent = 'taskpilot:teams-updated'
 
@@ -207,7 +209,7 @@ export function getTeamCreationErrorMessage(error: unknown) {
   }
 
   if (isTeamSummaryLengthError(error)) {
-    return TEAM_SUMMARY_LENGTH_MESSAGE
+    return TEAM_SUMMARY_MIN_LENGTH_MESSAGE
   }
 
   return describeError(error, '팀 생성에 실패했습니다.')

@@ -28,6 +28,7 @@ import {
   fetchSkillOptions,
   getTeamCreationErrorMessage,
   TEAM_SUMMARY_MAX_LENGTH,
+  TEAM_SUMMARY_MIN_LENGTH,
 } from '../features/teams/lib/teams'
 import type { SkillOption } from '../features/teams/types/team'
 import { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
@@ -91,6 +92,8 @@ function buildValidationErrors(form: TeamCreateFormState, imageFile: File | null
 
   if (!form.summary.trim()) {
     nextErrors.summary = '한 줄 소개를 입력해 주세요.'
+  } else if (form.summary.trim().length < TEAM_SUMMARY_MIN_LENGTH) {
+    nextErrors.summary = `한 줄 소개는 ${TEAM_SUMMARY_MIN_LENGTH}자 이상 입력해 주세요.`
   } else if (form.summary.trim().length > TEAM_SUMMARY_MAX_LENGTH) {
     nextErrors.summary = `한 줄 소개는 ${TEAM_SUMMARY_MAX_LENGTH}자 이내로 입력해 주세요.`
   }
@@ -452,7 +455,10 @@ export function TeamCreatePage() {
                   {...imeInputProps}
                 />
                 <p className={cn('text-xs', fieldErrors.summary ? 'text-rose-600' : 'text-slate-500')}>
-                  {fieldErrors.summary ?? `짧아도 괜찮아요. ${form.summary.trim().length}/${TEAM_SUMMARY_MAX_LENGTH}자`}
+                  {fieldErrors.summary ??
+                    (form.summary.trim().length < TEAM_SUMMARY_MIN_LENGTH
+                      ? `최소 ${TEAM_SUMMARY_MIN_LENGTH}자부터 만들 수 있어요. ${form.summary.trim().length}/${TEAM_SUMMARY_MAX_LENGTH}자`
+                      : `좋아요. ${form.summary.trim().length}/${TEAM_SUMMARY_MAX_LENGTH}자`)}
                 </p>
               </div>
 

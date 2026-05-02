@@ -1,4 +1,11 @@
-import { useCallback, useRef, type FormEventHandler, type KeyboardEventHandler, type MouseEventHandler } from 'react'
+import {
+  useCallback,
+  useRef,
+  type CompositionEventHandler,
+  type FormEventHandler,
+  type KeyboardEventHandler,
+  type MouseEventHandler,
+} from 'react'
 
 type EditableElement = HTMLInputElement | HTMLTextAreaElement
 
@@ -8,13 +15,18 @@ function isEditableElement(element: Element | null): element is EditableElement 
 
 export function useImeSafeSubmit() {
   const isComposingRef = useRef(false)
+  const composingElementRef = useRef<EditableElement | null>(null)
 
-  const handleCompositionStart = useCallback(() => {
+  const handleCompositionStart = useCallback<CompositionEventHandler<EditableElement>>((event) => {
     isComposingRef.current = true
+    composingElementRef.current = event.currentTarget
   }, [])
 
-  const handleCompositionEnd = useCallback(() => {
+  const handleCompositionEnd = useCallback<CompositionEventHandler<EditableElement>>((event) => {
     isComposingRef.current = false
+    if (composingElementRef.current === event.currentTarget) {
+      composingElementRef.current = null
+    }
   }, [])
 
   const isEventComposing = useCallback((event?: { nativeEvent?: Event }) => {
@@ -26,14 +38,42 @@ export function useImeSafeSubmit() {
   const commitComposition = useCallback(async () => {
     if (!isComposingRef.current) return
 
+    const targetElement = composingElementRef.current
     const activeElement = document.activeElement
-    if (isEditableElement(activeElement)) {
-      activeElement.blur()
+    const element = targetElement ?? (isEditableElement(activeElement) ? activeElement : null)
+
+    const clearCompositionState = () => {
+      isComposingRef.current = false
+      if (composingElementRef.current === element) {
+        composingElementRef.current = null
+      }
+    }
+
+    if (!element) {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 0)
+      })
+      return
     }
 
     await new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 0)
+      let isResolved = false
+      const resolveOnce = () => {
+        if (isResolved) return
+        isResolved = true
+        element.removeEventListener('compositionend', resolveOnce)
+        window.clearTimeout(timeoutId)
+        resolve()
+      }
+      const timeoutId = window.setTimeout(resolveOnce, 50)
+
+      element.addEventListener('compositionend', resolveOnce, { once: true })
+      element.blur()
     })
+
+    if (isComposingRef.current && document.activeElement !== element) {
+      clearCompositionState()
+    }
   }, [])
 
   const runImeSafeAction = useCallback(
@@ -75,6 +115,8 @@ export function useImeSafeSubmit() {
   )
 
   const preventBlurOnMouseDown = useCallback<MouseEventHandler<HTMLElement>>((event) => {
+    if (isComposingRef.current) return
+
     event.preventDefault()
   }, [])
 
