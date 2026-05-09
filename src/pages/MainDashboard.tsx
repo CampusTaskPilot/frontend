@@ -6,30 +6,28 @@ import { DashboardAssignedTaskSection } from '../features/dashboard/components/D
 import { DashboardScheduleSection } from '../features/dashboard/components/DashboardScheduleSection'
 import { TodayRecommendationCard } from '../features/dashboard/components/TodayRecommendationCard'
 import { WorkSummaryCard } from '../features/dashboard/components/WorkSummaryCard'
-import { useDashboardSchedule } from '../features/dashboard/hooks/useDashboardSchedule'
-import { useDashboardTasks } from '../features/dashboard/hooks/useDashboardTasks'
+import { useDashboardHome } from '../features/dashboard/hooks/useDashboardHome'
+import type { DashboardWorkSummary } from '../features/dashboard/types'
+
+const emptyWorkSummary: DashboardWorkSummary = {
+  inProgressCount: 0,
+  dueTodayCount: 0,
+  highPriorityCount: 0,
+  incompleteTodoCount: 0,
+}
 
 export function MainDashboard() {
   const { user } = useAuth()
   const userId = user?.id ?? null
+  const dashboardHomeQuery = useDashboardHome(userId)
+  const dashboardHome = dashboardHomeQuery.data
 
   const metadata = user?.user_metadata as { full_name?: string; workspace_name?: string } | undefined
   const displayName = metadata?.full_name ?? user?.email?.split('@')[0] ?? '사용자'
   const workspaceName = metadata?.workspace_name ?? '기본 워크스페이스'
-
-  const {
-    visibleAssignedTasks,
-    activeTaskCount,
-    summary,
-    isLoading: isTasksLoading,
-    errorMessage: tasksErrorMessage,
-  } = useDashboardTasks(userId)
-
-  const {
-    upcomingSchedule,
-    isLoading: isScheduleLoading,
-    errorMessage: scheduleErrorMessage,
-  } = useDashboardSchedule(userId)
+  const isDashboardLoading = dashboardHomeQuery.isLoading
+  const dashboardErrorMessage =
+    dashboardHomeQuery.error instanceof Error ? dashboardHomeQuery.error.message : ''
 
   return (
     <section className="page-shell">
@@ -67,21 +65,21 @@ export function MainDashboard() {
       <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1.5fr),minmax(340px,0.92fr)]">
         <div className="space-y-5">
           <DashboardAssignedTaskSection
-            tasks={visibleAssignedTasks}
-            totalCount={activeTaskCount}
-            isLoading={isTasksLoading}
-            errorMessage={tasksErrorMessage}
+            tasks={dashboardHome?.visibleAssignedTasks ?? []}
+            totalCount={dashboardHome?.activeTaskCount ?? 0}
+            isLoading={isDashboardLoading}
+            errorMessage={dashboardErrorMessage}
           />
         </div>
 
         <div className="space-y-5">
           <TodayRecommendationCard userId={userId} />
           <DashboardScheduleSection
-            items={upcomingSchedule}
-            isLoading={isScheduleLoading}
-            errorMessage={scheduleErrorMessage}
+            items={dashboardHome?.upcomingSchedule ?? []}
+            isLoading={isDashboardLoading}
+            errorMessage={dashboardErrorMessage}
           />
-          <WorkSummaryCard summary={summary} isLoading={isTasksLoading} />
+          <WorkSummaryCard summary={dashboardHome?.workSummary ?? emptyWorkSummary} isLoading={isDashboardLoading} />
         </div>
       </div>
     </section>

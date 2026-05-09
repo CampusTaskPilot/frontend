@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../../features/auth/context/useAuth'
+import { useDashboardHome } from '../../features/dashboard/hooks/useDashboardHome'
 import { fetchSidebarTeams, subscribeTeamsUpdated } from '../../features/teams/lib/teams'
 import type { SidebarTeamItem } from '../../features/teams/types/team'
 import { Button } from '../ui/Button'
@@ -57,20 +58,37 @@ function TeamLinkList({
 
 export function AppSidebar() {
   const { user } = useAuth()
+  const location = useLocation()
+  const isDashboardRoute = location.pathname === '/dashboard'
+  const dashboardHomeQuery = useDashboardHome(isDashboardRoute ? user?.id ?? null : null)
   const [managedTeams, setManagedTeams] = useState<SidebarTeamItem[]>([])
   const [joinedTeams, setJoinedTeams] = useState<SidebarTeamItem[]>([])
   const [isLoadingTeams, setIsLoadingTeams] = useState(false)
   const [activeTeamTab, setActiveTeamTab] = useState<TeamSidebarTab>('managed')
+  const isSidebarLoading = isDashboardRoute ? dashboardHomeQuery.isLoading : isLoadingTeams
 
   const currentTeams = useMemo(
-    () => (activeTeamTab === 'managed' ? managedTeams : joinedTeams),
-    [activeTeamTab, joinedTeams, managedTeams],
+    () => {
+      const displayedManagedTeams = isDashboardRoute
+        ? dashboardHomeQuery.data?.sidebarTeams.managedTeams ?? []
+        : managedTeams
+      const displayedJoinedTeams = isDashboardRoute
+        ? dashboardHomeQuery.data?.sidebarTeams.joinedTeams ?? []
+        : joinedTeams
+
+      return activeTeamTab === 'managed' ? displayedManagedTeams : displayedJoinedTeams
+    },
+    [activeTeamTab, dashboardHomeQuery.data, isDashboardRoute, joinedTeams, managedTeams],
   )
 
   useEffect(() => {
     if (!user) {
       setManagedTeams([])
       setJoinedTeams([])
+      return
+    }
+
+    if (isDashboardRoute) {
       return
     }
 
@@ -113,7 +131,7 @@ export function AppSidebar() {
       isMounted = false
       unsubscribe()
     }
-  }, [user])
+  }, [isDashboardRoute, user])
 
   return (
     <aside className="border-b border-white/70 bg-white/72 px-4 py-4 backdrop-blur-xl lg:self-start lg:border-b-0 lg:border-r lg:px-5 lg:py-8">
@@ -186,7 +204,7 @@ export function AppSidebar() {
         </div>
 
         <div className="mt-4">
-          {isLoadingTeams ? (
+          {isSidebarLoading ? (
             <div className="rounded-2xl border border-campus-200 bg-white px-3 py-3 text-sm text-campus-500">
               팀 목록을 불러오는 중입니다...
             </div>

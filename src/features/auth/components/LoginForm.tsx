@@ -4,6 +4,7 @@ import { Button } from '../../../components/ui/Button'
 import { InputField } from '../../../components/ui/InputField'
 import { useImeSafeSubmit } from '../../../hooks/useImeSafeSubmit'
 import { useSupabaseAuth } from '../hooks/useSupabaseAuth'
+import { getAuthErrorMessage } from '../lib/authErrorMessages'
 
 interface RedirectState {
   from?: {
@@ -34,7 +35,7 @@ export function LoginForm() {
       navigate(redirectTo, { replace: true })
     } catch (error) {
       setStatus('error')
-      setMessage(error instanceof Error ? error.message : '로그인에 실패했습니다.')
+      setMessage(getAuthErrorMessage(error, '로그인에 실패했습니다.'))
     }
   }
 

@@ -1,4 +1,5 @@
 import type {
+  SidebarTeams,
   TeamCalendarEventType,
   TeamTaskPriority,
   TeamTaskStatus,
@@ -32,6 +33,25 @@ export interface DashboardWorkSummary {
   dueTodayCount: number
   highPriorityCount: number
   incompleteTodoCount: number
+}
+
+export interface DashboardHomeMeta {
+  generatedAt: string
+  today: string
+  limits: {
+    visibleAssignedTasks: number
+    upcomingSchedule: number
+    sidebarTeamsPerRole: number
+  }
+}
+
+export interface DashboardHomeData {
+  visibleAssignedTasks: DashboardAssignedTask[]
+  activeTaskCount: number
+  upcomingSchedule: DashboardScheduleItem[]
+  sidebarTeams: SidebarTeams
+  workSummary: DashboardWorkSummary
+  meta: DashboardHomeMeta
 }
 
 export interface DashboardScheduleItem {

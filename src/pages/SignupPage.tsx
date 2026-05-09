@@ -8,9 +8,18 @@ import {
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/common/Navbar'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/shadcn/dialog'
 import { Button } from '../components/ui/Button'
 import { InputField } from '../components/ui/InputField'
 import { useSupabaseAuth } from '../features/auth/hooks/useSupabaseAuth'
+import { getAuthErrorMessage } from '../features/auth/lib/authErrorMessages'
 import { useImeSafeSubmit } from '../hooks/useImeSafeSubmit'
 import { supabase } from '../lib/supabase'
 
@@ -31,7 +40,7 @@ const onboardingSteps = [
   {
     step: '01',
     title: '기본 계정 생성',
-    description: '이름, 이메일, 비밀번호만 입력하고 바로 계정을 만듭니다.',
+    description: '이름, 이메일, 비밀번호를 확인하고 바로 계정을 만듭니다.',
   },
   {
     step: '02',
@@ -45,33 +54,54 @@ const onboardingSteps = [
   },
 ]
 
+const termsSections = [
+  {
+    title: '수집하는 개인정보',
+    items: [
+      '이름: 서비스 내 프로필 표시와 계정 식별에 사용합니다.',
+      '이메일: 로그인, 이메일 인증, 계정 안내에 사용합니다.',
+      '비밀번호: 로그인 인증을 위해 사용하며, 원문을 저장하거나 직접 확인하지 않습니다.',
+    ],
+  },
+  {
+    title: '이용 목적',
+    items: [
+      '회원 계정 생성 및 본인 계정 식별',
+      '로그인, 이메일 인증, 계정 보안 유지',
+      'TaskPilot 대시보드와 워크스페이스 이용 제공',
+    ],
+  },
+  {
+    title: '보관 및 파기',
+    items: [
+      '개인정보는 회원 탈퇴 또는 서비스 이용 목적 달성 시 지체 없이 파기합니다.',
+      '관련 법령에 따라 보관이 필요한 정보는 정해진 기간 동안 분리 보관할 수 있습니다.',
+    ],
+  },
+  {
+    title: '비밀번호 처리 방식',
+    items: [
+      '비밀번호는 로그인 인증을 위해 암호화 등 안전한 방식으로 처리되며, 원문을 저장하거나 운영자가 확인할 수 있는 형태로 보관하지 않습니다.',
+      'TaskPilot은 비밀번호 원문을 저장하거나 운영자가 확인할 수 있는 형태로 보관하지 않습니다.',
+    ],
+  },
+  {
+    title: '동의 거부 안내',
+    items: [
+      '개인정보 수집 및 이용에 동의하지 않을 수 있습니다.',
+      '다만 이름, 이메일, 비밀번호는 회원가입에 필요한 최소 정보이므로 동의하지 않으면 가입이 제한됩니다.',
+    ],
+  },
+  // {
+  //   title: '개인정보 문의',
+  //   items: ['개인정보 관련 문의는 서비스 운영자에게 요청할 수 있습니다. 문의 이메일: taskpilot.support@example.com'],
+  // },
+]
+
 function isAlreadyRegisteredSignUpResult(data: {
   user: { identities?: unknown[] | null } | null
 }) {
   return Boolean(data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
-}
-
-function getSignupErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) {
-    return '회원가입 중 오류가 발생했습니다. 다시 시도해 주세요.'
-  }
-
-  const normalized = error.message.toLowerCase()
-
-  if (
-    normalized.includes('already registered') ||
-    normalized.includes('already been registered') ||
-    normalized.includes('user already registered') ||
-    normalized.includes('duplicate key value')
-  ) {
-    return '이미 가입된 이메일입니다. 로그인해 주세요.'
-  }
-
-  if (normalized.includes('failed to fetch') || normalized.includes('network')) {
-    return '네트워크 연결이 불안정합니다. 잠시 후 다시 시도해 주세요.'
-  }
-
-  return '회원가입 중 오류가 발생했습니다. 다시 시도해 주세요.'
 }
 
 export function SignupPage() {
@@ -81,12 +111,20 @@ export function SignupPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [message, setMessage] = useState('')
 
   async function handleSubmit() {
-    setStatus('loading')
     setMessage('')
+
+    if (password !== passwordConfirm) {
+      setStatus('error')
+      setMessage('비밀번호가 일치하지 않습니다. 다시 확인해 주세요.')
+      return
+    }
+
+    setStatus('loading')
 
     try {
       const trimmedName = name.trim()
@@ -127,7 +165,7 @@ export function SignupPage() {
       })
     } catch (error) {
       setStatus('error')
-      setMessage(getSignupErrorMessage(error))
+      setMessage(getAuthErrorMessage(error, '회원가입 중 오류가 발생했습니다. 다시 시도해 주세요.'))
     }
   }
 
@@ -199,16 +237,81 @@ export function SignupPage() {
                   required
                   minLength={8}
                 />
+                <InputField
+                  label="비밀번호 확인"
+                  id="passwordConfirm"
+                  type="password"
+                  value={passwordConfirm}
+                  placeholder="비밀번호를 다시 입력해 주세요"
+                  hint="입력한 비밀번호와 동일해야 회원가입을 진행할 수 있습니다."
+                  onChange={(event) => setPasswordConfirm(event.target.value)}
+                  onCompositionStart={ime.handleCompositionStart}
+                  onCompositionEnd={ime.handleCompositionEnd}
+                  onKeyDown={ime.preventEnterWhileComposing()}
+                  required
+                  minLength={8}
+                />
 
                 <div className="rounded-[1.35rem] border border-brand-100/80 bg-brand-50/70 px-4 py-4 text-sm leading-6 text-campus-700">
                   워크스페이스 이름, 팀 소개, 운영 정보는 가입 후 내부 설정 화면에서 추가할 수 있습니다.
                 </div>
 
+                <p className="break-keep px-1 text-xs leading-5 text-campus-500">
+                  회원가입을 진행하면 TaskPilot의{' '}
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <button
+                        type="button"
+                        className="font-semibold text-brand-600 underline-offset-4 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-200"
+                      >
+                        개인정보 수집 및 이용 동의
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-[38rem]">
+                      <DialogHeader className="border-b border-slate-100 px-6 pb-4 pt-6 pr-14">
+                        <DialogTitle>개인정보 수집 및 이용 동의</DialogTitle>
+                        <DialogDescription className="break-keep">
+                          TaskPilot 회원가입에 필요한 최소 개인정보 수집 및 이용 안내입니다.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="max-h-[60svh] overflow-y-auto px-6 py-5 text-sm leading-7 text-slate-600">
+                        <p className="break-keep text-slate-700">
+                          TaskPilot은 회원가입과 서비스 제공을 위해 이름, 이메일, 비밀번호를 수집합니다. 입력한
+                          정보는 계정 생성, 로그인, 이메일 인증, 서비스 이용 제공을 위해서만 사용되며 회원 탈퇴 시
+                          지체 없이 파기됩니다.
+                        </p>
+
+                        <div className="mt-5 space-y-5">
+                          {termsSections.map((section) => (
+                            <section key={section.title}>
+                              <h3 className="text-sm font-semibold text-slate-950">{section.title}</h3>
+                              <ul className="mt-2 list-disc space-y-1 pl-5">
+                                {section.items.map((item) => (
+                                  <li key={item} className="break-keep">
+                                    {item}
+                                  </li>
+                                ))}
+                              </ul>
+                            </section>
+                          ))}
+                        </div>
+
+                        <p className="mt-5 break-keep rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-500">
+                          이 약관은 현재 서비스 운영을 위한 기본 안내이며, 정식 정책 문서가 마련되면 해당 문서가
+                          우선 적용됩니다.
+                        </p>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  에 동의한 것으로 간주됩니다.
+                </p>
+
                 <Button
                   type="submit"
                   onMouseDown={ime.preventBlurOnMouseDown}
                   className="w-full gap-2 py-3 text-base"
-                  disabled={!name.trim() || !email.trim() || !password || status === 'loading'}
+                  disabled={!name.trim() || !email.trim() || !password || !passwordConfirm || status === 'loading'}
                 >
                   {status === 'loading' ? '가입 처리 중...' : '회원가입'}
                   {status !== 'loading' && <ArrowRight className="h-4 w-4" />}
